@@ -11,8 +11,8 @@
 set -uo pipefail
 
 GPU=${GPU:-0}
-HF_DIR=${HF_DIR:-/data/g1j-2.9b-hf}
-GGUF=${GGUF:-/data/g1j-2.9b-f16.gguf}
+HF_DIR=${HF_DIR:-/data/run/g1j-2.9b-hf}
+GGUF=${GGUF:-/data/run/g1j-2.9b-f16.gguf}
 PY=${PY:-$HOME/siphon-rwkv7/bin/python}
 LLAMA_BIN=${LLAMA_BIN:-$HOME/llama.cpp/build/bin}
 PREFILL=2048
