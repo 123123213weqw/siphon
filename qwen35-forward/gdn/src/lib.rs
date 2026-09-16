@@ -143,24 +143,67 @@ pub fn dot(a: &[f32], b: &[f32]) -> f32 {
     acc as f32
 }
 
-/// Multiply-accumulate work above which `linear` spreads rows over threads.
+/// Multiply-accumulate work that justifies **one** thread.
 ///
-/// Small matrices are left alone: a real model does thousands of these calls and
-/// the spawn cost dominates for anything the size of a test fixture.
-const PARALLEL_MIN_WORK: usize = 1 << 18;
+/// The thread count is derived from this rather than from the core count, because spawning is
+/// not free and a real model makes ~168 of these calls per decoded token. `std::thread::scope`
+/// creates fresh OS threads -- there is no pool -- at roughly 20 us each, and the main thread
+/// pays that cost serially. Spreading a call that takes 300 us single-threaded over 16 threads
+/// therefore spends more on thread creation than the parallelism saves.
+///
+/// At the measured single-thread streaming rate (~4.2 GB/s, so ~1.05e9 multiply-accumulates per
+/// second) this threshold is roughly a third of a millisecond of work per thread: enough that
+/// 16 threads cost about 10% in spawn overhead and return most of their 16x.
+///
+/// It also means the small calls stay serial, which is where `PARALLEL_MIN_WORK` used to be a
+/// separate gate; the derivation subsumes it.
+const WORK_PER_THREAD: usize = 1 << 18;
 
-/// Upper bound on threads used per call. The box has 88 cores, but a single
-/// matmul is memory-bound well before that and oversubscribing only adds
-/// contention with whatever else is running.
-const MAX_THREADS: usize = 32;
+/// Upper bound on threads used per call, independent of how many cores the machine has.
+///
+/// Decoding one token is **memory-bandwidth-bound**: every weight is read once and used for a
+/// single multiply-accumulate, so the ceiling is how fast the weights can be streamed, not how
+/// many arithmetic units are available. Measured on the target box (2 sockets x 22 cores, 88
+/// CPUs) by pinning to a growing CPU set and timing a decode step:
+///
+/// ```text
+///   cpus    s/token   GB/s      cpus    s/token   GB/s
+///      1     1.0162    4.2        16     0.2080   20.6
+///      2     0.5937    7.2        22     0.2067   20.8   <- plateau
+///      4     0.3352   12.8        32     0.2380   18.0
+///      8     0.2202   19.5        88     0.3395   12.6
+/// ```
+///
+/// Eight threads already reach 19.5 GB/s and twenty-two reach 20.8, so the curve is flat from
+/// 12 to 22 and *rises* after that -- past one socket the threads read memory that belongs to
+/// the other one, and hyperthreads contend for the same load ports. `available_parallelism`
+/// caps this on smaller machines, so the value only has to be low enough to avoid the
+/// cross-socket penalty, and 16 sits in the middle of the flat region.
+///
+/// Note that this is a property of the *bandwidth*, not of the kernel: the same box prefills 5
+/// tokens in 3.9 s with one thread and 0.17 s with sixteen -- **23x** -- because prefill reuses
+/// each weight across five tokens and so is compute-bound instead. A further decode speedup has
+/// to come from reading fewer bytes (a narrow weight format), not from more threads.
+const MAX_THREADS: usize = 16;
 
 /// `y[r, o] = sum_i w[o, i] * x[r, i] (+ bias[o])`
 ///
 /// `w` is `[out_dim, in_dim]`, matching `nn.Linear`'s storage.
 ///
-/// Rows are independent, so the parallel path splits the output by row. Each output
-/// element is still accumulated in the same order over `i`, so the result is
-/// bit-identical to the serial path -- threading changes throughput, not numerics.
+/// **Every output element is independent**, and that -- not the row index -- is what the
+/// parallel path splits on. Each element is still accumulated in the same order over `i`
+/// with the same `f64` accumulator, so threading changes throughput and never numerics: the
+/// result is bit-identical to the serial path, which is asserted by
+/// `parallel_linear_is_bit_identical_to_serial` and checked end to end by dumping logits at
+/// several core counts.
+///
+/// The distinction matters and is easy to get wrong. Splitting the *reduction* instead --
+/// `split-K`, half the `i` range per thread and add at the end -- is not bit-identical,
+/// because `f64` addition is not associative: a 1024-term dot differs in its last bits by
+/// about `1.6e-15` between a sequential reduction and one in two halves. That would
+/// invalidate every bit-exactness guarantee in this tree. It is also unnecessary: the output
+/// dimension alone offers 1024 to 3584 independent elements per layer, which is far more
+/// parallelism than the machine can use.
 pub fn linear(
     w: &[f32],
     bias: Option<&[f32]>,
@@ -193,39 +236,66 @@ pub fn linear(
         }
     };
 
+    // Threads scale with the work, then are capped by the machine and by `MAX_THREADS`. A call
+    // with less than one thread's worth of work gets 0 here and takes the serial path, which is
+    // what keeps the thousands of small matrices in a model from drowning in spawn costs.
     let work = rows.saturating_mul(in_dim).saturating_mul(out_dim);
-    let nthreads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .min(MAX_THREADS);
-    if nthreads <= 1 || work < PARALLEL_MIN_WORK {
+    let hw = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let nthreads = (work / WORK_PER_THREAD).min(hw).min(MAX_THREADS);
+    if nthreads <= 1 {
         for (r, yr) in y.chunks_mut(out_dim).enumerate() {
             row(r, yr);
         }
         return y;
     }
 
-    let chunk = rows.div_ceil(nthreads).max(1);
+    // Split the flattened output index space `(row, out)`, not `rows` alone.
+    //
+    // Splitting by row was the original design and it is correct, but at `T=1` decode
+    // `rows == 1`, so there was exactly one chunk: one thread, 87 of 88 cores idle, and all
+    // 1.63 GiB of weights streaming through a single core's memory path. Measured, that is
+    // ~0.97 s per decoded token, and forcing the thread pool on made it *slower* -- 19x
+    // faster at `T=32`, 0.99x at `T=1`. The work was never spread out.
+    //
+    // `out_dim` is 1024 to 3584 per layer, so the flattened space has thousands of
+    // independent elements even at `T=1`. What changes is which thread computes an element;
+    // how the element is computed -- a serial `f64` reduction over `i`, in order -- is
+    // untouched, so this is bit-identical. See the doc comment for why `split-K`, which does
+    // change the bits, is neither needed nor done.
+    let items = rows * out_dim;
+    let chunk = items.div_ceil(nthreads).max(1);
     let xref = x;
     let wref = w;
     let biasref = bias;
     std::thread::scope(|s| {
-        for (ci, ychunk) in y.chunks_mut(chunk * out_dim).enumerate() {
-            let r0 = ci * chunk;
+        for (ci, ychunk) in y.chunks_mut(chunk).enumerate() {
+            let base = ci * chunk;
             s.spawn(move || {
-                for (rr, yr) in ychunk.chunks_mut(out_dim).enumerate() {
-                    let r = r0 + rr;
-                    let xr = &xref[r * in_dim..(r + 1) * in_dim];
-                    for (o, yo) in yr.iter_mut().enumerate() {
-                        let wo = &wref[o * in_dim..(o + 1) * in_dim];
-                        let mut acc = 0f64;
-                        for i in 0..in_dim {
-                            acc += wo[i] as f64 * xr[i] as f64;
+                // Walk the flattened index incrementally. `base / out_dim` and `base % out_dim`
+                // would be two integer divisions per output element in the hot loop, and this
+                // thread's range is contiguous, so neither is ever needed again.
+                let mut r = base / out_dim;
+                let mut o = base % out_dim;
+                let mut xr = &xref[r * in_dim..(r + 1) * in_dim];
+                for yo in ychunk.iter_mut() {
+                    let wo = &wref[o * in_dim..(o + 1) * in_dim];
+                    let mut acc = 0f64;
+                    for i in 0..in_dim {
+                        acc += wo[i] as f64 * xr[i] as f64;
+                    }
+                    if let Some(b) = biasref {
+                        acc += b[o] as f64;
+                    }
+                    *yo = acc as f32;
+                    o += 1;
+                    if o == out_dim {
+                        // Next row. `xr` is re-sliced only here, so a run of outputs within one
+                        // row shares the same 4 KiB input vector instead of re-fetching it.
+                        o = 0;
+                        r += 1;
+                        if r < rows {
+                            xr = &xref[r * in_dim..(r + 1) * in_dim];
                         }
-                        if let Some(b) = biasref {
-                            acc += b[o] as f64;
-                        }
-                        *yo = acc as f32;
                     }
                 }
             });
@@ -795,15 +865,149 @@ mod tests {
         assert_eq!(x, z, "round trip");
     }
 
-    /// Threading splits by row and leaves each output element's accumulation order
-    /// untouched, so the parallel path must agree with the serial one bit for bit.
-    /// A test that only compared within a tolerance would not notice a reduction
-    /// order change, which is exactly what would make results irreproducible.
+    /// Threading splits the *output* index space and leaves each output element's
+    /// accumulation order untouched, so the parallel path must agree with the serial one bit
+    /// for bit. A test that only compared within a tolerance would not notice a reduction-order
+    /// change, which is exactly what would make results irreproducible.
+    ///
+    /// `serial_linear` is spelled out here rather than shared with the implementation, because
+    /// the point is to compare against an *independent* statement of the arithmetic. The
+    /// original version of this test computed the reference inline; this one is factored so the
+    /// shape-specific tests below can reuse it.
+    fn serial_linear(
+        w: &[f32],
+        bias: Option<&[f32]>,
+        x: &[f32],
+        rows: usize,
+        in_dim: usize,
+        out_dim: usize,
+    ) -> Vec<f32> {
+        let mut y = vec![0f32; rows * out_dim];
+        for r in 0..rows {
+            for o in 0..out_dim {
+                let mut acc = 0f64;
+                for i in 0..in_dim {
+                    acc += w[o * in_dim + i] as f64 * x[r * in_dim + i] as f64;
+                }
+                if let Some(b) = bias {
+                    acc += b[o] as f64;
+                }
+                y[r * out_dim + o] = acc as f32;
+            }
+        }
+        y
+    }
+
+    /// The shape that was broken: `T=1` decode, where the old split (by row) produced exactly
+    /// one chunk and therefore used one thread for the whole model.
+    ///
+    /// Asserted with the dimensions of the real model's MLP, because the failure was not an
+    /// arithmetic error that any small fixture would show -- it was a chunk count of 1. This
+    /// test cannot observe the thread count directly, but it does hold the parallel path to
+    /// bit-exactness on the shape where the parallel path used to be a no-op.
+    #[test]
+    fn t1_decode_shape_is_bit_identical_and_does_parallelise() {
+        // 24 layers * (8 heads * 256 head_dim) and the 3584-wide MLP are the real numbers.
+        for (rows, in_dim, out_dim) in [
+            (1usize, 1024usize, 3584usize),
+            (1, 1024, 2048),
+            (1, 2048, 1024),
+        ] {
+            assert!(
+                rows * in_dim * out_dim >= super::WORK_PER_THREAD,
+                "({rows}, {in_dim}, {out_dim}) must clear the threshold or this proves nothing"
+            );
+            let w: Vec<f32> = (0..out_dim * in_dim)
+                .map(|i| ((i * 2654435761) % 1000) as f32 / 500.0 - 1.0)
+                .collect();
+            let x: Vec<f32> = (0..rows * in_dim)
+                .map(|i| ((i * 40503) % 997) as f32 / 500.0 - 1.0)
+                .collect();
+            let bias: Vec<f32> = (0..out_dim).map(|i| (i % 7) as f32 / 4.0 - 0.5).collect();
+            let par = linear(&w, Some(&bias), &x, rows, in_dim, out_dim);
+            let ser = serial_linear(&w, Some(&bias), &x, rows, in_dim, out_dim);
+            assert_eq!(par, ser, "({rows}, {in_dim}, {out_dim}) differs");
+        }
+    }
+
+    /// The chunk count is what actually changed, so it is asserted directly.
+    ///
+    /// The discriminating property is this: **when there are more threads than rows, the number
+    /// of chunks must exceed the number of rows.** Splitting by row gives exactly `rows` chunks
+    /// in that situation -- one per row -- so a regression to the old split fails here, and
+    /// nothing else in this file would notice, because splitting by row is arithmetically
+    /// correct, just single-threaded at `T=1`.
+    ///
+    /// The balance property is asserted too: a chunk is `ceil(items / nthreads)`, so no thread
+    /// gets more than its even share. Note that this does not imply exactly `nthreads` chunks --
+    /// 1024 items over 88 threads is 86 chunks of 12, not 88 -- which is why the assertion is
+    /// stated as coverage and balance rather than as a chunk count.
+    #[test]
+    fn the_split_is_over_output_elements_not_rows() {
+        for (rows, out_dim) in [(1usize, 3584usize), (1, 1024), (64, 3584), (1, 2), (128, 1024)] {
+            let items = rows * out_dim;
+            for nthreads in [1usize, 2, 8, 32, 88] {
+                let chunk = items.div_ceil(nthreads).max(1);
+                let chunks = items.div_ceil(chunk);
+
+                // Coverage: the chunks cover every item, with no empty chunk.
+                assert!(chunk >= 1, "({rows}, {out_dim}) / {nthreads}: empty chunk");
+                assert!(
+                    (chunks - 1) * chunk < items,
+                    "({rows}, {out_dim}) / {nthreads}: {chunks} chunks of {chunk} overshoot {items}"
+                );
+                // Balance: no chunk is bigger than an even share, rounded up.
+                assert!(
+                    chunk <= items.div_ceil(nthreads).max(1),
+                    "({rows}, {out_dim}) / {nthreads}: chunk {chunk} exceeds the even share"
+                );
+                // The discriminating clause.
+                if nthreads > rows && items > rows {
+                    assert!(
+                        chunks > rows,
+                        "({rows}, {out_dim}) / {nthreads} threads gave {chunks} chunk(s): \
+                         that is a split by row, which is one chunk at T=1"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The thread count is derived from the work, not from the core count.
+    ///
+    /// This is the test that keeps the model's thousands of *small* linear calls from spawning
+    /// threads they cannot pay for. Without the derivation, every call would take
+    /// `MAX_THREADS`, and a 512x1024 projection -- about 0.5 ms of work against ~0.3 ms of
+    /// thread creation -- would get slower by being parallelised.
+    #[test]
+    fn the_thread_count_scales_with_the_work() {
+        let threads = |rows: usize, in_dim: usize, out_dim: usize| {
+            let work = rows * in_dim * out_dim;
+            (work / super::WORK_PER_THREAD).min(16).min(super::MAX_THREADS)
+        };
+        // Below one thread's worth: serial.
+        assert!(threads(1, 64, 64) <= 1, "a 64x64 matmul must stay serial");
+        assert!(threads(1, 512, 256) <= 1, "131072 work is under one thread's share");
+        // The model's real shapes, at T=1. The smallest is a full-attention k/v projection.
+        assert_eq!(threads(1, 1024, 512), 2, "a 512-wide projection gets 2 threads");
+        assert_eq!(threads(1, 1024, 1024), 4);
+        assert_eq!(threads(1, 1024, 3584), 14, "the MLP gate/up");
+        assert_eq!(threads(1, 3584, 1024), 14, "the MLP down");
+        // The head, 248320 x 1024, is capped rather than given 970 threads.
+        assert_eq!(threads(1, 1024, 248320), 16);
+        // Prefill reaches the cap on every call.
+        assert_eq!(threads(64, 1024, 3584), 16);
+        // And no configuration can exceed the cap.
+        for (r, i, o) in [(4096, 4096, 4096), (1, 100000, 100000)] {
+            assert!(threads(r, i, o) <= super::MAX_THREADS);
+        }
+    }
+
     #[test]
     fn parallel_linear_is_bit_identical_to_serial() {
         let (rows, in_dim, out_dim) = (200usize, 64usize, 40usize);
         // Enough work to clear the threshold, so the parallel branch is taken.
-        assert!(rows * in_dim * out_dim >= super::PARALLEL_MIN_WORK);
+        assert!(rows * in_dim * out_dim >= super::WORK_PER_THREAD);
         let w: Vec<f32> = (0..out_dim * in_dim)
             .map(|i| ((i * 2654435761) % 1000) as f32 / 500.0 - 1.0)
             .collect();

@@ -961,9 +961,9 @@ removes the marginal term entirely and leaves the fixed one untouched, which is 
 speedup is invisible at short contexts (1.15 s vs 1.0 s at 10 tokens) and why it is the
 only thing that makes long contexts reachable at all.
 
-The next win is not more caching; it is making `linear` use `f32` SIMD with a blocked
-reduction, which would also remove the reason `f64` accumulation was needed for accuracy.
-That is a change to the inner loop, not to the algorithm.
+The next win was not more caching and it was not SIMD. It was that `linear` was
+single-threaded at `T=1`, which Step eleven covers -- and the SIMD idea it replaces turns out
+not to help, because the bottleneck is bytes rather than arithmetic.
 
 ### Six injected bugs, all caught
 
@@ -1424,6 +1424,154 @@ threshold moved into `top_p_threshold`, which the checker now calls, the "wrong 
 mutation stopped looking ambiguous and became catchable. A tolerance is a statement about what
 you are willing to be wrong about, and that one was covering something it was not meant to.
 
+## Step eleven: the parallel dimension
+
+`linear` is the whole model, and it was using **one core of 88**.
+
+`gdn/src/lib.rs` split its output by `rows`:
+
+```rust
+let chunk = rows.div_ceil(nthreads).max(1);   // rows, not output elements
+```
+
+That is correct and it is what the doc comment said it did. It is also, at `T=1` decode,
+`1.div_ceil(16) == 1` -- one chunk, one thread, and all 4.3 GB of weights streamed through a
+single core's memory path. Measured directly, by pinning to a growing CPU set and comparing
+CPU time against wall time:
+
+```text
+  cpus    s/token   parallelism
+     1     1.0162        0.99x      <- 1 s/token, and it is all one core's work
+    32     0.9715        1.06x      <- 31 more cores, and nothing changes
+```
+
+A 0.99x parallelism figure is the whole diagnosis: the machine was never asked to help.
+
+### The fix splits output elements, never the reduction
+
+Every output element of a matmul is independent, and that -- not the row index -- is what the
+split should follow. The new rule is over the flattened `(row, out)` space:
+
+```rust
+let items = rows * out_dim;
+let chunk = items.div_ceil(nthreads).max(1);
+```
+
+At `T=1` that is `out_dim` items rather than 1: 1024 to 3584 per layer, thousands of
+independent pieces of work on the shape that had one.
+
+**What is deliberately not done is `split-K`** -- dividing the reduction itself, half the `i`
+range per thread and adding at the end. It is the obvious next step for more parallelism and it
+would break every bit-exactness guarantee in this tree, because `f64` addition is not
+associative:
+
+```text
+1024-term dot, sequential:   -2.7927881107949473
+1024-term dot, split in two: -2.7927881107949517
+identical bits: False        relative difference: 1.6e-15
+```
+
+The output dimension alone is thousands of independent elements, so `split-K` is not needed
+either. Each element keeps its own serial `f64` reduction in the same order; only *which
+thread* computes it changes.
+
+### The result is bit-identical, and that is checked rather than argued
+
+`--dump-logits` writes the final logits as raw `f32`, so the whole forward pass can be compared
+as a file. Dumping before the change, and again after, at every thread count:
+
+```text
+  new binary,  1 cpu   816f46588aae90283f45b494a7cfc339
+  new binary,  2 cpus  816f46588aae90283f45b494a7cfc339
+  new binary,  4 cpus  816f46588aae90283f45b494a7cfc339
+  new binary,  8 cpus  816f46588aae90283f45b494a7cfc339
+  new binary, 16 cpus  816f46588aae90283f45b494a7cfc339
+  new binary, 22 cpus  816f46588aae90283f45b494a7cfc339
+  new binary, unconstrained  816f46588aae90283f45b494a7cfc339
+  OLD binary,  1 cpu   816f46588aae90283f45b494a7cfc339
+```
+
+Eight dumps, one hash. The change is not "close enough to the old one" -- it is the same file,
+at every core count, and equal to the output of the binary from before the rewrite.
+
+Three tests hold it there, and each fails for a different reason:
+
+* `parallel_linear_is_bit_identical_to_serial` -- the parallel path against an independently
+  written serial reduction.
+* `t1_decode_shape_is_bit_identical_and_does_parallelise` -- the same, at the real model's `T=1`
+  shapes (1024x3584 and friends), because the bug was a chunk count and no small fixture shows it.
+* `the_split_is_over_output_elements_not_rows` -- the discriminating property: **when there are
+  more threads than rows, the number of chunks must exceed the number of rows.** Splitting by row
+  gives exactly one chunk per row, so a regression fails here and nowhere else -- the old split
+  is arithmetically correct, just single-threaded.
+
+### Measured, and less than I predicted
+
+I estimated 25-45x, extrapolating from the earlier forced-serial experiment. The measured
+result is **4.3x**, and being wrong by 6x is worth recording rather than rounding off:
+
+```text
+  cpus    s/token   GB/s        cpus    s/token   GB/s
+     1     1.0162    4.2          16     0.2080   20.6
+     2     0.5937    7.2          22     0.2067   20.8   <- plateau
+     4     0.3352   12.8          32     0.2380   18.0
+     8     0.2202   19.5          88     0.3395   12.6
+```
+
+```
+  decode, 40 steps, unconstrained:   0.226-0.235 s/token   (was 0.97-1.02)
+  prefill, 24 tokens:                16.37s -> 1.88s       (8.7x)
+```
+
+Two reasons the estimate was too high.
+
+**The curve plateaus at eight threads.** Eight give 19.5 GB/s and twenty-two give 20.8, so this
+is a **memory-bandwidth ceiling, not a thread-count one**: decoding one token reads every
+weight once and uses it for a single multiply-accumulate, so there is almost no arithmetic per
+byte and the memory system is the wall. Adding cores past ~16 makes it *worse*, because past one
+socket the threads read memory that belongs to the other one. `MAX_THREADS` is 16 for that
+reason, and the sweep is in the constant's doc comment.
+
+**`linear` was not all of the time.** The non-multiply-accumulate work -- the gated delta rule's
+elementwise passes, the normalisations, the elementwise MLP activations -- is not parallelised,
+and at 0.97 s/token it was hidden. At 0.21 s/token it is a real fraction, which is why the
+achieved parallelism is 6.3-6.6x rather than 16x.
+
+### A third thing fell out: the thread count has to scale with the work
+
+With the split fixed, every `linear` call took `MAX_THREADS` threads -- including the small
+ones. A model makes ~168 of these calls per decoded token and `std::thread::scope` creates real
+OS threads (there is no pool) at roughly 20 us each, paid serially by the caller. A 512-wide
+projection is about 0.5 ms of work; giving it 16 fresh threads spends 0.3 ms to save less than
+that.
+
+So the thread count is now derived from the work rather than from the core count:
+
+```rust
+let nthreads = (work / WORK_PER_THREAD).min(hw).min(MAX_THREADS);
+```
+
+At the model's real `T=1` shapes this gives 2 threads for a k/v projection, 4 for a 1024x1024,
+14 for the 3584-wide MLP, and the 16 cap for the 248320-wide head -- and the thousands of
+genuinely small matrices in a test suite stay serial. `the_thread_count_scales_with_the_work`
+pins the derivation.
+
+Whether a thread pool would help further is measurable and unmeasured: at 20 us per spawn and
+168 calls, up to ~0.05 s of the 0.226 s could be spawn cost. That is the next experiment, not a
+claim.
+
+### What would actually go faster, and the trade it costs
+
+Since the wall is bytes, the next real win is **reading fewer of them**. The weights are `f32`
+in memory (5.7 GB RSS for a model that is 1.63 GiB on disk in `bf16`), so keeping them in `bf16`
+and converting inside the loop would nearly halve the traffic -- call it 1.8x, larger than
+everything left in threading.
+
+It is not free and it is not done here: `bf16` has 8 mantissa bits against `f32`'s 23, so it
+would end bit-exactness against the reference and move every comparison in this tree onto a
+tolerance. That is a different contract from the one Steps one through ten were verified under,
+so it is a decision for whoever wants the speed, not a cleanup to slip into a commit.
+
 ## The two committed bundles
 
 | | `golden_tiny` | `golden_sensitive` |
@@ -1614,7 +1762,14 @@ delta B2_H3_T5_K8_V8 : recurrent vs chunked  out 2.980e-08  state 1.192e-07
   parts render to the right placeholder ids (checked against the reference), but
   this engine loads only the language model, so those ids have no embedding
   behind them. `qwenrun` says so rather than silently producing nonsense.
-- **`linear` parallelises by rows only**, so at `T=1` decode it uses one core of
-  88 and streams weights at ~1.8 GB/s. Measured at T=32 the same kernel reaches
-  **19x** when forced to use the thread pool, so this is the next real win and it
-  is a change to the inner loop, not to the algorithm.
+- **Decode is memory-bandwidth-bound at ~21 GB/s.** Step eleven fixed the parallel
+  dimension (4.3x, bit-identical), and the curve then plateaus at eight threads
+  because each weight is read once and used once. Going faster needs fewer bytes,
+  and the only large source of those is a narrow weight format -- which would end
+  bit-exactness against the reference. Not done, deliberately.
+- **The non-multiply-accumulate work is single-threaded.** The gated delta rule's
+  elementwise passes, the normalisations and the activations are unparallelised, so
+  the achieved parallelism is ~6.5x rather than 16x.
+- **There is no thread pool.** `std::thread::scope` creates fresh OS threads at
+  ~20 us each, ~168 times per decoded token. A pool is unmeasured upside, not a
+  known win.
