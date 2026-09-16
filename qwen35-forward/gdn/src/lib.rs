@@ -39,9 +39,12 @@
 use deltarule::{forward_prepared, forward_prepared_into, Shape};
 
 pub mod attention;
+pub mod chat;
+pub mod chatparse;
 pub mod layer;
 pub mod loader;
 pub mod model;
+pub mod pyjson;
 pub mod real;
 pub mod safetensors;
 pub mod tokenizer;

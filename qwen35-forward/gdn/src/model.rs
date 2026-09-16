@@ -332,6 +332,28 @@ pub fn greedy_cached(
     prompt: &[u32],
     steps: usize,
 ) -> Result<(Vec<u32>, Vec<ModelTrace>), String> {
+    let (ids, traces, _) = greedy_cached_stopping(mcfg, w, prompt, steps, &[])?;
+    Ok((ids, traces))
+}
+
+/// Greedy decoding with a cache and a stop set.
+///
+/// `stop` is how a chat turn ends: `<|im_end|>` is the checkpoint's `eos_token`, so
+/// generating it means the assistant is done. The stop token is **not** included in
+/// the returned ids -- it is the turn's terminator rather than part of the reply,
+/// which is also what [`crate::chatparse::parse_assistant`] expects to be handed --
+/// and `true` in the third position says one was hit. Hitting the step limit instead
+/// returns `false`, so a caller can tell a finished turn from a truncated one.
+///
+/// The token sequence up to the first stop token is identical to [`greedy_cached`]'s
+/// prefix, because stopping is a decision made after the argmax is read.
+pub fn greedy_cached_stopping(
+    mcfg: &ModelConfig,
+    w: &ModelWeights,
+    prompt: &[u32],
+    steps: usize,
+    stop: &[u32],
+) -> Result<(Vec<u32>, Vec<ModelTrace>, bool), String> {
     if prompt.is_empty() {
         return Err("empty prompt".to_string());
     }
@@ -342,12 +364,15 @@ pub fn greedy_cached(
     let mut traces = Vec::with_capacity(steps);
     for _ in 0..steps {
         let nxt = tr.argmax_last() as u32;
+        if stop.contains(&nxt) {
+            return Ok((generated, traces, true));
+        }
         generated.push(nxt);
         traces.push(tr);
         // Decode one token; the cache already holds everything before it.
         tr = forward_cached(mcfg, w, &mut cache, &[nxt])?;
     }
-    Ok((generated, traces))
+    Ok((generated, traces, false))
 }
 
 /// Greedy decoding: run, take the argmax of the last position, append, repeat.

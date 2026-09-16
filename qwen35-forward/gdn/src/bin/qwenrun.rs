@@ -19,8 +19,206 @@
 
 use std::process::ExitCode;
 
+use gdn::chat;
+use gdn::chatparse;
 use gdn::model;
+use gdn::pyjson;
 use gdn::real;
+
+/// One turn on the command line, in the order it was written.
+///
+/// The order matters: `--chat a --reply b --chat c` is a three-turn conversation,
+/// and the chat template renders it differently from `--chat a --chat c --reply b`
+/// (which is not a conversation at all). So the arguments are walked in order
+/// rather than looked up by name.
+enum Turn {
+    System(String),
+    User(String),
+    Assistant(String),
+    Tool(String),
+}
+
+fn parse_turns(args: &[String]) -> Result<Vec<Turn>, String> {
+    let mut out = Vec::new();
+    let mut i = 1usize;
+    while i < args.len() {
+        let a = args[i].as_str();
+        let take = |i: usize, name: &str| -> Result<String, String> {
+            args.get(i + 1).cloned().ok_or_else(|| format!("{name} needs a value"))
+        };
+        match a {
+            "--system" => {
+                out.push(Turn::System(take(i, a)?));
+                i += 2;
+            }
+            "--chat" => {
+                out.push(Turn::User(take(i, a)?));
+                i += 2;
+            }
+            "--reply" => {
+                out.push(Turn::Assistant(take(i, a)?));
+                i += 2;
+            }
+            "--tool-result" => {
+                out.push(Turn::Tool(take(i, a)?));
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    Ok(out)
+}
+
+fn turns_to_messages(turns: &[Turn]) -> Vec<chat::Message> {
+    turns
+        .iter()
+        .map(|t| match t {
+            Turn::System(s) => chat::Message::system(s.clone()),
+            Turn::User(s) => chat::Message::user(s.clone()),
+            Turn::Assistant(s) => chat::Message::assistant(s.clone()),
+            Turn::Tool(s) => chat::Message::tool(s.clone()),
+        })
+        .collect()
+}
+
+/// Show the calls a reply asked for. The values are text, because that is what a
+/// `<parameter>` holds; mapping them onto the tool's schema is the caller's job.
+fn print_tool_calls(reply: &chatparse::Reply) {
+    for c in &reply.tool_calls {
+        let args = c
+            .arguments
+            .iter()
+            .map(|(k, v)| format!("{k}={v:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("   tool call: {}({args})", c.name);
+    }
+}
+
+/// The conversational path: render the template, decode until the turn ends, and
+/// read the reply back.
+///
+/// One iteration per turn; `--repl` drives it in a loop.
+#[allow(clippy::too_many_arguments)]
+fn run_chat(
+    c: &model::ModelConfig,
+    w: &model::ModelWeights,
+    tk: &gdn::tokenizer::Tokenizer,
+    mut messages: Vec<chat::Message>,
+    tools: Vec<pyjson::Value>,
+    opts: chat::Options,
+    steps: usize,
+    repl: bool,
+    show_prompt: bool,
+) -> ExitCode {
+    // `<|im_end|>` is the checkpoint's `eos_token` -- measured from
+    // `tokenizer_config.json`, not assumed -- and the template closes every turn
+    // with it. It is a stop token rather than part of the reply.
+    let stop: Vec<u32> = vec![248046];
+    let mut stdin_lines = std::io::stdin().lines();
+    loop {
+        // In a REPL the next turn is read *before* anything is rendered: rendering
+        // first would have to invent a turn to render, and a greeting the user did
+        // not type is a turn they did not ask for.
+        if repl {
+            print!("user> ");
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
+            let Some(Ok(line)) = stdin_lines.next() else {
+                println!();
+                return ExitCode::SUCCESS;
+            };
+            if line.trim().is_empty() {
+                return ExitCode::SUCCESS;
+            }
+            messages.push(chat::Message::user(line));
+        }
+
+        let req = chat::Request {
+            messages: messages.clone(),
+            tools: tools.clone(),
+            opts,
+        };
+        let rendered = match chat::render(&req) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("chat template: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        println!();
+        println!(
+            "== chat prompt ({} bytes, {} turn(s))",
+            rendered.text.len(),
+            messages.len()
+        );
+        // The prompt is echoed in a one-shot run, where seeing it is the point, and
+        // summarised in a REPL, where it is a wall of text on every turn.
+        if repl {
+            println!("   (use --show-prompt to echo it)");
+        }
+        if show_prompt || !repl {
+            println!("   {:?}", rendered.text);
+        }
+        if rendered.images > 0 || rendered.videos > 0 {
+            println!(
+                "   !! {} image and {} video part(s) rendered; this engine loads only the \
+                 language model, so those ids have no vision embedding behind them",
+                rendered.images, rendered.videos
+            );
+        }
+        let prompt = tk.encode(&rendered.text);
+        println!("   -> {} tokens", prompt.len());
+
+        // A fresh cache per turn: the whole conversation is re-rendered each turn
+        // (the assistant block is closed and re-emitted as history), so the cached
+        // prefix would not survive the re-render anyway.
+        let t0 = std::time::Instant::now();
+        let (generated, _, stopped) =
+            match model::greedy_cached_stopping(c, w, &prompt, steps, &stop) {
+                Ok(x) => x,
+                Err(e) => {
+                    eprintln!("decode failed: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        let secs = t0.elapsed().as_secs_f64();
+
+        // The prompt ends inside the assistant turn, so everything generated is the
+        // continuation -- which is exactly what `parse_assistant` reads.
+        let continuation = tk.decode(&generated);
+        let reply = chatparse::parse_assistant(&continuation);
+        println!();
+        println!(
+            "   {} token(s) in {secs:.2}s ({:.2}s/token){}",
+            generated.len(),
+            secs / generated.len().max(1) as f64,
+            if stopped { "" } else { "  [hit the step limit, not <|im_end|>]" }
+        );
+        println!("   generated ids: {}", generated.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","));
+        if let Some(r) = &reply.reasoning {
+            println!("   reasoning: {r:?}");
+        }
+        println!("   reply:     {:?}", reply.content);
+        print_tool_calls(&reply);
+        if !reply.tool_calls.is_empty() {
+            println!(
+                "   to answer a call, re-run with the assistant turn and the result:\n\
+                 \x20    --reply {continuation:?} --tool-result OUTPUT"
+            );
+        }
+
+        if !repl {
+            return ExitCode::SUCCESS;
+        }
+        // The assistant's own turn goes into the history with its reasoning and its
+        // calls, so the next render sees the conversation the model actually had.
+        let mut assistant = chat::Message::assistant(reply.content.clone());
+        assistant.reasoning = Some(reply.reasoning.clone().unwrap_or_default());
+        assistant.tool_calls = reply.as_chat_calls();
+        messages.push(assistant);
+    }
+}
 
 /// Decode a raw little-endian `f32` blob.
 ///
@@ -49,12 +247,23 @@ fn main() -> ExitCode {
     };
     let Some(dir) = args.iter().skip(1).find(|a| !a.starts_with("--")) else {
         eprintln!(
-            "usage: qwenrun <model-dir> [--text STRING | --prompt 1,2,3] [--tokens N]\n\
-             \x20                    [--topk K] [--cached] [--expect-tokens IDS]\n\
-             \x20                    [--dump-logits FILE] [--compare FILE]"
+            "usage: qwenrun <model-dir> [--text STRING | --prompt 1,2,3 | --chat STRING ...]\n\
+             \x20                    [--tokens N] [--topk K] [--cached] [--expect-tokens IDS]\n\
+             \x20                    [--dump-logits FILE] [--compare FILE]\n\
+             \x20       chat: --system S --chat S --reply S --tool-result S --thinking --repl\n\
+             \x20             --tools-file FILE.json | --tools JSON"
         );
         return ExitCode::from(2);
     };
+    let turns = match parse_turns(&args) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let repl = args.iter().any(|a| a == "--repl");
+    let chat_mode = repl || !turns.is_empty();
     let topk: usize = val("--topk").and_then(|s| s.parse().ok()).unwrap_or(10);
     let steps: usize = val("--tokens").and_then(|s| s.parse().ok()).unwrap_or(0);
     // Default tolerance, and why it is not 1e-5.
@@ -186,6 +395,87 @@ fn main() -> ExitCode {
         c.vocab,
         c.eps
     );
+
+    // ---- chat --------------------------------------------------------------
+    //
+    // Placed here so it shares the loading report above and skips the raw
+    // continuation path below, which is a different question ("what comes next"
+    // rather than "what is the answer").
+    if chat_mode {
+        let (tk, info) = match gdn::tokenizer::Tokenizer::from_model_dir(dir) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let tools: Vec<pyjson::Value> = if let Some(path) = val("--tools-file") {
+            match std::fs::read(&path).map_err(|e| format!("{path}: {e}")) {
+                Ok(b) => match pyjson::parse(&String::from_utf8_lossy(&b)) {
+                    Ok(pyjson::Value::Array(a)) => a,
+                    Ok(one @ pyjson::Value::Object(_)) => vec![one],
+                    Ok(_) => {
+                        eprintln!("{path}: tools must be an array or an object");
+                        return ExitCode::FAILURE;
+                    }
+                    Err(e) => {
+                        eprintln!("{path}: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                },
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        } else if let Some(inline) = val("--tools") {
+            match pyjson::parse(&inline) {
+                Ok(pyjson::Value::Array(a)) => a,
+                Ok(one @ pyjson::Value::Object(_)) => vec![one],
+                Ok(_) => {
+                    eprintln!("--tools must be an array or an object");
+                    return ExitCode::FAILURE;
+                }
+                Err(e) => {
+                    eprintln!("error: --tools: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let opts = chat::Options {
+            add_generation_prompt: true,
+            enable_thinking: args.iter().any(|a| a == "--thinking"),
+            add_vision_id: args.iter().any(|a| a == "--vision-id"),
+        };
+        println!();
+        println!(
+            "== chat  {}  added {}  pattern {}  {} tool(s)  thinking {}",
+            info.model_type,
+            info.added_tokens,
+            info.pattern_variant,
+            tools.len(),
+            opts.enable_thinking
+        );
+        // In chat mode the turn list is the prompt; in a REPL it is read from stdin.
+        // At least one user turn is required, and the template says so if there is
+        // not one -- but a REPL with only a `--system` is legal, so it is not
+        // rejected here.
+        let steps = if steps == 0 { 64 } else { steps };
+        let messages = turns_to_messages(&turns);
+        return run_chat(
+            c,
+            &rm.weights,
+            &tk,
+            messages,
+            tools,
+            opts,
+            steps,
+            repl,
+            args.iter().any(|a| a == "--show-prompt"),
+        );
+    }
 
     // ---- forward ----------------------------------------------------------
     println!();

@@ -746,6 +746,47 @@ impl Tokenizer {
         self.marks_join_letters = v;
     }
 
+    /// Merge in added tokens that only `tokenizer_config.json` knows about.
+    ///
+    /// The two files disagree on this checkpoint, and the config is the one that
+    /// wins: `tokenizer.json` lists 26 added tokens (highest id 248069) while
+    /// `tokenizer_config.json`'s `added_tokens_decoder` lists 33 (highest
+    /// 248076). `AutoTokenizer` loads the file and then applies the config on top,
+    /// so the seven extra tokens -- `<|audio_start|>`, `<|audio_end|>`,
+    /// `<tts_pad>`, `<tts_text_bos>`, `<tts_text_eod>`, `<tts_text_bos_single>`
+    /// and `<|audio_pad|>` -- are each a *single* id when the model is served.
+    ///
+    /// Reading only `tokenizer.json` does not fail; it silently splits them into
+    /// pieces. `<|audio_start|>` becomes `<|` + `audio` + `_start` + `|>`, six ids
+    /// instead of one, and nothing about the output looks wrong.
+    ///
+    /// Returns how many were new.
+    pub fn absorb_added_tokens(&mut self, extra: &[(String, u32)]) -> usize {
+        let mut added_new = 0usize;
+        for (tok, id) in extra {
+            // `added_tokens` in the file wins on a conflict: it is what the
+            // tokenizer was built with, and the two agree everywhere they overlap
+            // on this checkpoint.
+            if self.added.iter().any(|(t, _)| t == tok) {
+                continue;
+            }
+            let i = *id as usize;
+            if i >= self.id_to_token.len() {
+                self.id_to_token.resize(i + 1, String::new());
+            }
+            if self.id_to_token[i].is_empty() {
+                self.id_to_token[i] = tok.clone();
+            }
+            self.added.push((tok.clone(), *id));
+            added_new += 1;
+        }
+        // The scan takes the longest match at each position, so the order is
+        // restored rather than left in config order.
+        self.added
+            .sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(&b.0)));
+        added_new
+    }
+
     /// Load from a model directory, honouring `tokenizer_config.json` the way
     /// `AutoTokenizer` does.
     ///
@@ -755,15 +796,38 @@ impl Tokenizer {
     /// and loading the model through `AutoTokenizer` therefore give different ids for
     /// text containing combining marks, and this picks the `AutoTokenizer` behaviour
     /// because that is what the model is served with.
+    ///
+    /// The same argument applies to added tokens, and there it is not a matter of
+    /// taste: the config lists seven more than the file does. See
+    /// [`Tokenizer::absorb_added_tokens`].
     pub fn from_model_dir(dir: impl AsRef<Path>) -> Result<(Tokenizer, TokenizerInfo), String> {
         let dir = dir.as_ref();
-        let (mut tk, info) = Tokenizer::from_file(dir.join("tokenizer.json"))?;
+        let (mut tk, mut info) = Tokenizer::from_file(dir.join("tokenizer.json"))?;
 
         let cfg_path = dir.join("tokenizer_config.json");
         let class = if cfg_path.exists() {
             let raw = std::fs::read(&cfg_path).map_err(|e| format!("{}: {e}", cfg_path.display()))?;
             let doc: serde_json::Value = serde_json::from_slice(&raw)
                 .map_err(|e| format!("{}: {e}", cfg_path.display()))?;
+
+            // `added_tokens_decoder` is an object keyed by id, as a string.
+            if let Some(dec) = doc.get("added_tokens_decoder").and_then(|v| v.as_object()) {
+                let mut extra: Vec<(String, u32)> = Vec::with_capacity(dec.len());
+                for (id, entry) in dec {
+                    let Ok(id) = id.parse::<u32>() else { continue };
+                    // Either the modern `{"content": ...}` shape or a bare string.
+                    let content = match entry {
+                        serde_json::Value::String(s) => Some(s.as_str()),
+                        other => other.get("content").and_then(|c| c.as_str()),
+                    };
+                    if let Some(c) = content {
+                        extra.push((c.to_string(), id));
+                    }
+                }
+                let n = tk.absorb_added_tokens(&extra);
+                info.added_tokens += n;
+            }
+
             doc.get("tokenizer_class")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
@@ -805,6 +869,70 @@ impl Tokenizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tokenizer with the 256 byte-level characters as ids 0..255 and **no**
+    /// merges, so any multi-byte string that is not an added token comes back as
+    /// one id per byte. That makes "did this become a single id" visible without
+    /// a vocabulary.
+    fn byte_only() -> Tokenizer {
+        let table = byte_to_char_table();
+        let mut byte_char_id = [0u32; 256];
+        let mut id_to_token = Vec::with_capacity(256);
+        let mut char_to_byte = HashMap::new();
+        for b in 0..256usize {
+            byte_char_id[b] = b as u32;
+            id_to_token.push(table[b].to_string());
+            char_to_byte.insert(table[b], b as u8);
+        }
+        Tokenizer {
+            byte_char_id,
+            id_to_token,
+            merge: HashMap::new(),
+            added: Vec::new(),
+            char_to_byte,
+            marks_join_letters: true,
+        }
+    }
+
+    /// The bug this exists for: seven tokens are declared only in
+    /// `tokenizer_config.json`, so a loader that reads `tokenizer.json` alone
+    /// splits them into pieces instead of failing.
+    #[test]
+    fn absorbed_added_tokens_become_one_id() {
+        let mut tk = byte_only();
+        let text = "<|audio_start|>";
+        let split = tk.encode(text);
+        assert!(split.len() > 1, "without an added token it must split: {split:?}");
+        assert_eq!(tk.decode(&split), text, "the pieces still round-trip");
+
+        assert_eq!(tk.absorb_added_tokens(&[("<|audio_start|>".into(), 248070)]), 1);
+        assert_eq!(tk.encode(text), vec![248070]);
+        assert_eq!(tk.token_str(248070), Some(text));
+        assert_eq!(tk.decode(&[248070]), text);
+    }
+
+    #[test]
+    fn absorbing_is_idempotent_and_keeps_longest_first() {
+        let mut tk = byte_only();
+        tk.absorb_added_tokens(&[("<|audio_start|>".into(), 248070)]);
+        // A second pass changes nothing, which is what makes it safe to call on
+        // top of the file's own list.
+        assert_eq!(tk.absorb_added_tokens(&[("<|audio_start|>".into(), 248070)]), 0);
+        assert_eq!(tk.encode("<|audio_start|>"), vec![248070]);
+
+        // Longest match wins: after adding a longer token that shares a prefix,
+        // the longer one is still taken at that position.
+        tk.absorb_added_tokens(&[("<|audio_start|>extra".into(), 248071)]);
+        assert_eq!(tk.encode("<|audio_start|>extra"), vec![248071]);
+        // ... and a character that is not part of it still splits off, as its own
+        // byte id.
+        assert_eq!(tk.encode("<|audio_start|>!"), vec![248070, b'!' as u32]);
+
+        // And the file's own list is not disturbed by a re-add of the same id.
+        let before = tk.added.len();
+        tk.absorb_added_tokens(&[("<|audio_start|>".into(), 248070)]);
+        assert_eq!(tk.added.len(), before);
+    }
 
     #[test]
     fn byte_table_is_a_bijection_over_256_values() {

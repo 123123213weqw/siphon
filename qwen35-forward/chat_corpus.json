@@ -1,0 +1,4884 @@
+{
+ "mode": "chat_template.jinja (text + tools + tool role + vision + errors)",
+ "generated_by": "tools/make_chat_corpus.py",
+ "model_dir_name": "Qwen3.5-0.8B",
+ "cases": [
+  {
+   "name": "single-turn",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "single-turn-no-generation-prompt",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "thinking-on",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "enable_thinking": true,
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    198
+   ]
+  },
+  {
+   "name": "system-first",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a terse assistant."
+    },
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\nYou are a terse assistant.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    2523,
+    513,
+    264,
+    48834,
+    17313,
+    13,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "system-empty-and-whitespace",
+   "messages": [
+    {
+     "role": "system",
+     "content": "   "
+    },
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "system-content-is-none",
+   "messages": [
+    {
+     "role": "system",
+     "content": null
+    },
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "multi-turn-two",
+   "messages": [
+    {
+     "role": "user",
+     "content": "a"
+    },
+    {
+     "role": "assistant",
+     "content": "b"
+    },
+    {
+     "role": "user",
+     "content": "c"
+    },
+    {
+     "role": "assistant",
+     "content": "d"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\nb<|im_end|>\n<|im_start|>user\nc<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nd<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    64,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    65,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    66,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    67,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "multi-turn-history-then-prompt",
+   "messages": [
+    {
+     "role": "user",
+     "content": "a"
+    },
+    {
+     "role": "assistant",
+     "content": "b"
+    },
+    {
+     "role": "user",
+     "content": "c"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\nb<|im_end|>\n<|im_start|>user\nc<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    64,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    65,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    66,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trailing-assistant",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    },
+    {
+     "role": "assistant",
+     "content": "Hello!"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nHello!<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    9419,
+    0,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "assistant-after-last-query",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "a"
+    },
+    {
+     "role": "user",
+     "content": "q2"
+    },
+    {
+     "role": "assistant",
+     "content": "a2"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nq2<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na2<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    64,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    80,
+    17,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    64,
+    17,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "reasoning-content-explicit",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "ans",
+     "reasoning_content": "the thought"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\nthe thought\n</think>\n\nans<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    198,
+    1719,
+    3272,
+    198,
+    248069,
+    271,
+    581,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "reasoning-content-empty-string-suppresses-extraction",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "before</think>\nafter",
+     "reasoning_content": ""
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nbefore</think>\nafter<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    14372,
+    248069,
+    198,
+    10378,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "inline-think-in-content",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "<think>\nrz\n</think>\n\nans"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\nrz\n</think>\n\nans<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    198,
+    50213,
+    198,
+    248069,
+    271,
+    581,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "inline-think-no-closing-tag-is-left-alone",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "a <think> b"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na <think> b<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    64,
+    220,
+    248068,
+    292,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "inline-think-repeated-takes-the-last",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "<think>\nA <think>\nB\n</think>\n\nC"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\nB\n</think>\n\nC<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    198,
+    33,
+    198,
+    248069,
+    271,
+    34,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "reasoning-content-in-history-is-not-think-wrapped",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "a",
+     "reasoning_content": "r"
+    },
+    {
+     "role": "user",
+     "content": "q2"
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nq2<|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    64,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    80,
+    17,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "trim-spaces",
+   "messages": [
+    {
+     "role": "user",
+     "content": "   Hi there  \n"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi there<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    1017,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trim-tabs",
+   "messages": [
+    {
+     "role": "user",
+     "content": "\t\tHi\t\t"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trim-fs",
+   "messages": [
+    {
+     "role": "user",
+     "content": "\u001cHi\u001c"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trim-all-four-controls",
+   "messages": [
+    {
+     "role": "user",
+     "content": "\u001c\u001d\u001e\u001f Hi \u001f\u001e\u001d\u001c"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trim-nel-nbsp",
+   "messages": [
+    {
+     "role": "user",
+     "content": " Hi "
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trim-ideographic-space",
+   "messages": [
+    {
+     "role": "user",
+     "content": "　Hi　"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12675,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "trim-zero-width-space-is-not-space",
+   "messages": [
+    {
+     "role": "user",
+     "content": "​Hi​"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n​Hi​<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    15231,
+    12675,
+    15231,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "unicode-cjk",
+   "messages": [
+    {
+     "role": "user",
+     "content": "中国的首都是哪里？"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n中国的首都是哪里？<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    96328,
+    102357,
+    96878,
+    99549,
+    10992,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "unicode-emoji",
+   "messages": [
+    {
+     "role": "user",
+     "content": "héllo 😀🎉 world"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nhéllo 😀🎉 world<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    71,
+    17951,
+    379,
+    87209,
+    9008,
+    236,
+    231,
+    1814,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "unicode-combining",
+   "messages": [
+    {
+     "role": "user",
+     "content": "é vs é"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\né vs é<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    933,
+    5972,
+    3825,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "unicode-rtl",
+   "messages": [
+    {
+     "role": "user",
+     "content": "مرحبا שלום"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nمرحبا שלום<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    148739,
+    28850,
+    150027,
+    151009,
+    173924,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "unicode-devanagari",
+   "messages": [
+    {
+     "role": "user",
+     "content": "नमस्ते"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nनमस्ते<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    58069,
+    84237,
+    75681,
+    196965,
+    33228,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "empty-content",
+   "messages": [
+    {
+     "role": "user",
+     "content": ""
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "whitespace-only-content",
+   "messages": [
+    {
+     "role": "user",
+     "content": "   \n\t  "
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-with-markers-inside",
+   "messages": [
+    {
+     "role": "user",
+     "content": "a <|im_end|> b <think> c"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\na <|im_end|> b <think> c<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    64,
+    220,
+    248046,
+    292,
+    220,
+    248068,
+    272,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-with-tool-response-markers-as-prose",
+   "messages": [
+    {
+     "role": "user",
+     "content": "he said <tool_response> once"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nhe said <tool_response> once<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    377,
+    1018,
+    220,
+    248066,
+    2957,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-none",
+   "messages": [
+    {
+     "role": "user",
+     "content": null
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "long-conversation",
+   "messages": [
+    {
+     "role": "user",
+     "content": "question 0"
+    },
+    {
+     "role": "assistant",
+     "content": "answer 0"
+    },
+    {
+     "role": "user",
+     "content": "question 1"
+    },
+    {
+     "role": "assistant",
+     "content": "answer 1"
+    },
+    {
+     "role": "user",
+     "content": "question 2"
+    },
+    {
+     "role": "assistant",
+     "content": "answer 2"
+    },
+    {
+     "role": "user",
+     "content": "question 3"
+    },
+    {
+     "role": "assistant",
+     "content": "answer 3"
+    },
+    {
+     "role": "user",
+     "content": "final"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nquestion 0<|im_end|>\n<|im_start|>assistant\nanswer 0<|im_end|>\n<|im_start|>user\nquestion 1<|im_end|>\n<|im_start|>assistant\nanswer 1<|im_end|>\n<|im_start|>user\nquestion 2<|im_end|>\n<|im_start|>assistant\nanswer 2<|im_end|>\n<|im_start|>user\nquestion 3<|im_end|>\n<|im_start|>assistant\nanswer 3<|im_end|>\n<|im_start|>user\nfinal<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    7593,
+    220,
+    15,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    8944,
+    220,
+    15,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    7593,
+    220,
+    16,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    8944,
+    220,
+    16,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    7593,
+    220,
+    17,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    8944,
+    220,
+    17,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    7593,
+    220,
+    18,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    8944,
+    220,
+    18,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    11483,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tools-no-system",
+   "messages": [
+    {
+     "role": "user",
+     "content": "weather in Paris?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "units": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"units\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nweather in Paris?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    2,
+    13455,
+    271,
+    2523,
+    599,
+    2528,
+    310,
+    279,
+    2614,
+    5568,
+    25,
+    271,
+    27,
+    15449,
+    29,
+    198,
+    4754,
+    1267,
+    763,
+    328,
+    1628,
+    487,
+    328,
+    1628,
+    763,
+    5046,
+    591,
+    763,
+    328,
+    447,
+    67017,
+    487,
+    328,
+    4532,
+    763,
+    328,
+    1882,
+    279,
+    1428,
+    8831,
+    364,
+    264,
+    3177,
+    10152,
+    328,
+    13390,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    1640,
+    487,
+    328,
+    12811,
+    763,
+    5046,
+    8656,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    13933,
+    328,
+    24826,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    8934,
+    2069,
+    328,
+    6081,
+    763,
+    4241,
+    8656,
+    1293,
+    72964,
+    198,
+    510,
+    15449,
+    29,
+    271,
+    2592,
+    488,
+    4992,
+    310,
+    1562,
+    264,
+    709,
+    25835,
+    9559,
+    303,
+    279,
+    2614,
+    3443,
+    440,
+    5486,
+    19900,
+    25,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    28,
+    8422,
+    8901,
+    1224,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    16,
+    29,
+    198,
+    927,
+    62,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    17,
+    29,
+    198,
+    1919,
+    369,
+    279,
+    869,
+    364,
+    279,
+    2018,
+    5555,
+    198,
+    8761,
+    628,
+    9111,
+    198,
+    34493,
+    4965,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    271,
+    27,
+    95328,
+    29,
+    198,
+    92065,
+    25,
+    198,
+    12,
+    5534,
+    6526,
+    26834,
+    1732,
+    279,
+    5024,
+    3443,
+    25,
+    449,
+    8906,
+    361,
+    1628,
+    28,
+    1076,
+    1419,
+    1628,
+    29,
+    2424,
+    1902,
+    381,
+    23283,
+    2785,
+    220,
+    248058,
+    248059,
+    11535,
+    9212,
+    198,
+    12,
+    12296,
+    4868,
+    26834,
+    381,
+    5024,
+    198,
+    12,
+    1394,
+    1189,
+    3300,
+    9801,
+    31626,
+    364,
+    678,
+    709,
+    1562,
+    303,
+    5629,
+    3992,
+    54588,
+    279,
+    709,
+    1562,
+    11,
+    694,
+    4045,
+    1238,
+    198,
+    12,
+    1368,
+    1017,
+    369,
+    874,
+    709,
+    1562,
+    2420,
+    11,
+    4087,
+    279,
+    3296,
+    1040,
+    4472,
+    440,
+    678,
+    1428,
+    6337,
+    321,
+    635,
+    524,
+    3184,
+    279,
+    1156,
+    883,
+    709,
+    6526,
+    198,
+    510,
+    95328,
+    29,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    14764,
+    303,
+    11751,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tools-with-system",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are helpful."
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "units": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"units\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nYou are helpful.<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    2,
+    13455,
+    271,
+    2523,
+    599,
+    2528,
+    310,
+    279,
+    2614,
+    5568,
+    25,
+    271,
+    27,
+    15449,
+    29,
+    198,
+    4754,
+    1267,
+    763,
+    328,
+    1628,
+    487,
+    328,
+    1628,
+    763,
+    5046,
+    591,
+    763,
+    328,
+    447,
+    67017,
+    487,
+    328,
+    4532,
+    763,
+    328,
+    1882,
+    279,
+    1428,
+    8831,
+    364,
+    264,
+    3177,
+    10152,
+    328,
+    13390,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    1640,
+    487,
+    328,
+    12811,
+    763,
+    5046,
+    8656,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    13933,
+    328,
+    24826,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    8934,
+    2069,
+    328,
+    6081,
+    763,
+    4241,
+    8656,
+    1293,
+    72964,
+    198,
+    510,
+    15449,
+    29,
+    271,
+    2592,
+    488,
+    4992,
+    310,
+    1562,
+    264,
+    709,
+    25835,
+    9559,
+    303,
+    279,
+    2614,
+    3443,
+    440,
+    5486,
+    19900,
+    25,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    28,
+    8422,
+    8901,
+    1224,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    16,
+    29,
+    198,
+    927,
+    62,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    17,
+    29,
+    198,
+    1919,
+    369,
+    279,
+    869,
+    364,
+    279,
+    2018,
+    5555,
+    198,
+    8761,
+    628,
+    9111,
+    198,
+    34493,
+    4965,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    271,
+    27,
+    95328,
+    29,
+    198,
+    92065,
+    25,
+    198,
+    12,
+    5534,
+    6526,
+    26834,
+    1732,
+    279,
+    5024,
+    3443,
+    25,
+    449,
+    8906,
+    361,
+    1628,
+    28,
+    1076,
+    1419,
+    1628,
+    29,
+    2424,
+    1902,
+    381,
+    23283,
+    2785,
+    220,
+    248058,
+    248059,
+    11535,
+    9212,
+    198,
+    12,
+    12296,
+    4868,
+    26834,
+    381,
+    5024,
+    198,
+    12,
+    1394,
+    1189,
+    3300,
+    9801,
+    31626,
+    364,
+    678,
+    709,
+    1562,
+    303,
+    5629,
+    3992,
+    54588,
+    279,
+    709,
+    1562,
+    11,
+    694,
+    4045,
+    1238,
+    198,
+    12,
+    1368,
+    1017,
+    369,
+    874,
+    709,
+    1562,
+    2420,
+    11,
+    4087,
+    279,
+    3296,
+    1040,
+    4472,
+    440,
+    678,
+    1428,
+    6337,
+    321,
+    635,
+    524,
+    3184,
+    279,
+    1156,
+    883,
+    709,
+    6526,
+    198,
+    510,
+    95328,
+    29,
+    271,
+    2523,
+    513,
+    10631,
+    13,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    5834,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tools-with-empty-system",
+   "messages": [
+    {
+     "role": "system",
+     "content": "  "
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "units": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"units\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    2,
+    13455,
+    271,
+    2523,
+    599,
+    2528,
+    310,
+    279,
+    2614,
+    5568,
+    25,
+    271,
+    27,
+    15449,
+    29,
+    198,
+    4754,
+    1267,
+    763,
+    328,
+    1628,
+    487,
+    328,
+    1628,
+    763,
+    5046,
+    591,
+    763,
+    328,
+    447,
+    67017,
+    487,
+    328,
+    4532,
+    763,
+    328,
+    1882,
+    279,
+    1428,
+    8831,
+    364,
+    264,
+    3177,
+    10152,
+    328,
+    13390,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    1640,
+    487,
+    328,
+    12811,
+    763,
+    5046,
+    8656,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    13933,
+    328,
+    24826,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    8934,
+    2069,
+    328,
+    6081,
+    763,
+    4241,
+    8656,
+    1293,
+    72964,
+    198,
+    510,
+    15449,
+    29,
+    271,
+    2592,
+    488,
+    4992,
+    310,
+    1562,
+    264,
+    709,
+    25835,
+    9559,
+    303,
+    279,
+    2614,
+    3443,
+    440,
+    5486,
+    19900,
+    25,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    28,
+    8422,
+    8901,
+    1224,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    16,
+    29,
+    198,
+    927,
+    62,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    17,
+    29,
+    198,
+    1919,
+    369,
+    279,
+    869,
+    364,
+    279,
+    2018,
+    5555,
+    198,
+    8761,
+    628,
+    9111,
+    198,
+    34493,
+    4965,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    271,
+    27,
+    95328,
+    29,
+    198,
+    92065,
+    25,
+    198,
+    12,
+    5534,
+    6526,
+    26834,
+    1732,
+    279,
+    5024,
+    3443,
+    25,
+    449,
+    8906,
+    361,
+    1628,
+    28,
+    1076,
+    1419,
+    1628,
+    29,
+    2424,
+    1902,
+    381,
+    23283,
+    2785,
+    220,
+    248058,
+    248059,
+    11535,
+    9212,
+    198,
+    12,
+    12296,
+    4868,
+    26834,
+    381,
+    5024,
+    198,
+    12,
+    1394,
+    1189,
+    3300,
+    9801,
+    31626,
+    364,
+    678,
+    709,
+    1562,
+    303,
+    5629,
+    3992,
+    54588,
+    279,
+    709,
+    1562,
+    11,
+    694,
+    4045,
+    1238,
+    198,
+    12,
+    1368,
+    1017,
+    369,
+    874,
+    709,
+    1562,
+    2420,
+    11,
+    4087,
+    279,
+    3296,
+    1040,
+    4472,
+    440,
+    678,
+    1428,
+    6337,
+    321,
+    635,
+    524,
+    3184,
+    279,
+    1156,
+    883,
+    709,
+    6526,
+    198,
+    510,
+    95328,
+    29,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    5834,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tools-two",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "units": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        },
+        "units": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"units\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"units\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    2,
+    13455,
+    271,
+    2523,
+    599,
+    2528,
+    310,
+    279,
+    2614,
+    5568,
+    25,
+    271,
+    27,
+    15449,
+    29,
+    198,
+    4754,
+    1267,
+    763,
+    328,
+    1628,
+    487,
+    328,
+    1628,
+    763,
+    5046,
+    591,
+    763,
+    328,
+    447,
+    67017,
+    487,
+    328,
+    4532,
+    763,
+    328,
+    1882,
+    279,
+    1428,
+    8831,
+    364,
+    264,
+    3177,
+    10152,
+    328,
+    13390,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    1640,
+    487,
+    328,
+    12811,
+    763,
+    5046,
+    8656,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    13933,
+    328,
+    24826,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    8934,
+    2069,
+    328,
+    6081,
+    763,
+    4241,
+    8656,
+    1293,
+    72964,
+    198,
+    4754,
+    1267,
+    763,
+    328,
+    1628,
+    487,
+    328,
+    1628,
+    763,
+    5046,
+    591,
+    763,
+    328,
+    447,
+    67017,
+    487,
+    328,
+    4532,
+    763,
+    328,
+    1882,
+    279,
+    1428,
+    8831,
+    364,
+    264,
+    3177,
+    10152,
+    328,
+    13390,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    1640,
+    487,
+    328,
+    12811,
+    763,
+    5046,
+    8656,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    13933,
+    328,
+    24826,
+    763,
+    5046,
+    1267,
+    763,
+    328,
+    889,
+    8934,
+    2069,
+    328,
+    6081,
+    763,
+    4241,
+    8656,
+    1293,
+    72964,
+    198,
+    510,
+    15449,
+    29,
+    271,
+    2592,
+    488,
+    4992,
+    310,
+    1562,
+    264,
+    709,
+    25835,
+    9559,
+    303,
+    279,
+    2614,
+    3443,
+    440,
+    5486,
+    19900,
+    25,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    28,
+    8422,
+    8901,
+    1224,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    16,
+    29,
+    198,
+    927,
+    62,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    17,
+    29,
+    198,
+    1919,
+    369,
+    279,
+    869,
+    364,
+    279,
+    2018,
+    5555,
+    198,
+    8761,
+    628,
+    9111,
+    198,
+    34493,
+    4965,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    271,
+    27,
+    95328,
+    29,
+    198,
+    92065,
+    25,
+    198,
+    12,
+    5534,
+    6526,
+    26834,
+    1732,
+    279,
+    5024,
+    3443,
+    25,
+    449,
+    8906,
+    361,
+    1628,
+    28,
+    1076,
+    1419,
+    1628,
+    29,
+    2424,
+    1902,
+    381,
+    23283,
+    2785,
+    220,
+    248058,
+    248059,
+    11535,
+    9212,
+    198,
+    12,
+    12296,
+    4868,
+    26834,
+    381,
+    5024,
+    198,
+    12,
+    1394,
+    1189,
+    3300,
+    9801,
+    31626,
+    364,
+    678,
+    709,
+    1562,
+    303,
+    5629,
+    3992,
+    54588,
+    279,
+    709,
+    1562,
+    11,
+    694,
+    4045,
+    1238,
+    198,
+    12,
+    1368,
+    1017,
+    369,
+    874,
+    709,
+    1562,
+    2420,
+    11,
+    4087,
+    279,
+    3296,
+    1040,
+    4472,
+    440,
+    678,
+    1428,
+    6337,
+    321,
+    635,
+    524,
+    3184,
+    279,
+    1156,
+    883,
+    709,
+    6526,
+    198,
+    510,
+    95328,
+    29,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    5834,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tools-awkward-strings-and-types",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "f",
+      "description": "a<b>c&d'e\"f\\g\b\u001f",
+      "parameters": {
+       "properties": {
+        "k": {
+         "description": "中文 é 😀  "
+        },
+        "n": {
+         "default": null
+        },
+        "t": {
+         "default": true
+        },
+        "i": {
+         "default": 42
+        },
+        "big": {
+         "default": 1e+16
+        },
+        "at16": {
+         "default": 1000000000000000.0
+        },
+        "above16": {
+         "default": 1e+17
+        },
+        "at_1e_4": {
+         "default": 0.0001
+        },
+        "below_1e_4": {
+         "default": 1e-05
+        },
+        "neg_zero": {
+         "default": -0.0
+        },
+        "zero": {
+         "default": 0.0
+        },
+        "one": {
+         "default": 1.0
+        },
+        "huge": {
+         "default": 1e+300
+        },
+        "seventeen": {
+         "default": 0.3333333333333333
+        },
+        "lst": {
+         "default": [
+          1,
+          2,
+          {
+           "z": 0.1
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"f\", \"description\": \"a<b>c&d'e\\\"f\\\\g\\b\\u001f\", \"parameters\": {\"properties\": {\"k\": {\"description\": \"中文 é 😀  \"}, \"n\": {\"default\": null}, \"t\": {\"default\": true}, \"i\": {\"default\": 42}, \"big\": {\"default\": 1e+16}, \"at16\": {\"default\": 1000000000000000.0}, \"above16\": {\"default\": 1e+17}, \"at_1e_4\": {\"default\": 0.0001}, \"below_1e_4\": {\"default\": 1e-05}, \"neg_zero\": {\"default\": -0.0}, \"zero\": {\"default\": 0.0}, \"one\": {\"default\": 1.0}, \"huge\": {\"default\": 1e+300}, \"seventeen\": {\"default\": 0.3333333333333333}, \"lst\": {\"default\": [1, 2, {\"z\": 0.1}]}}}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    2,
+    13455,
+    271,
+    2523,
+    599,
+    2528,
+    310,
+    279,
+    2614,
+    5568,
+    25,
+    271,
+    27,
+    15449,
+    29,
+    198,
+    4754,
+    1267,
+    763,
+    328,
+    1628,
+    487,
+    328,
+    1628,
+    763,
+    5046,
+    591,
+    763,
+    328,
+    69,
+    487,
+    328,
+    4532,
+    763,
+    328,
+    64,
+    32075,
+    54452,
+    5,
+    67,
+    46272,
+    2037,
+    69,
+    3312,
+    70,
+    42020,
+    3642,
+    15,
+    15,
+    16,
+    69,
+    487,
+    328,
+    13390,
+    763,
+    5046,
+    12811,
+    763,
+    5046,
+    74,
+    763,
+    5046,
+    4532,
+    763,
+    328,
+    99986,
+    3825,
+    87209,
+    220,
+    373,
+    101,
+    13933,
+    328,
+    77,
+    763,
+    5046,
+    2186,
+    763,
+    819,
+    2069,
+    328,
+    83,
+    763,
+    5046,
+    2186,
+    763,
+    804,
+    2069,
+    328,
+    72,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    19,
+    17,
+    2069,
+    328,
+    15679,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    16,
+    68,
+    10,
+    16,
+    21,
+    2069,
+    328,
+    266,
+    16,
+    21,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    16,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    13,
+    15,
+    2069,
+    328,
+    46819,
+    16,
+    21,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    16,
+    68,
+    10,
+    16,
+    22,
+    2069,
+    328,
+    266,
+    62,
+    16,
+    68,
+    62,
+    19,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    15,
+    13,
+    15,
+    15,
+    15,
+    16,
+    2069,
+    328,
+    51390,
+    62,
+    16,
+    68,
+    62,
+    19,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    16,
+    68,
+    12,
+    15,
+    20,
+    2069,
+    328,
+    27833,
+    18772,
+    763,
+    5046,
+    2186,
+    763,
+    471,
+    15,
+    13,
+    15,
+    2069,
+    328,
+    13749,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    15,
+    13,
+    15,
+    2069,
+    328,
+    588,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    16,
+    13,
+    15,
+    2069,
+    328,
+    92075,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    16,
+    68,
+    10,
+    18,
+    15,
+    15,
+    2069,
+    328,
+    323,
+    666,
+    14480,
+    763,
+    5046,
+    2186,
+    763,
+    220,
+    15,
+    13,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    18,
+    2069,
+    328,
+    35471,
+    763,
+    5046,
+    2186,
+    763,
+    498,
+    16,
+    11,
+    220,
+    17,
+    11,
+    5046,
+    89,
+    763,
+    220,
+    15,
+    13,
+    16,
+    24634,
+    3307,
+    72964,
+    198,
+    510,
+    15449,
+    29,
+    271,
+    2592,
+    488,
+    4992,
+    310,
+    1562,
+    264,
+    709,
+    25835,
+    9559,
+    303,
+    279,
+    2614,
+    3443,
+    440,
+    5486,
+    19900,
+    25,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    28,
+    8422,
+    8901,
+    1224,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    16,
+    29,
+    198,
+    927,
+    62,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8422,
+    24109,
+    62,
+    17,
+    29,
+    198,
+    1919,
+    369,
+    279,
+    869,
+    364,
+    279,
+    2018,
+    5555,
+    198,
+    8761,
+    628,
+    9111,
+    198,
+    34493,
+    4965,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    271,
+    27,
+    95328,
+    29,
+    198,
+    92065,
+    25,
+    198,
+    12,
+    5534,
+    6526,
+    26834,
+    1732,
+    279,
+    5024,
+    3443,
+    25,
+    449,
+    8906,
+    361,
+    1628,
+    28,
+    1076,
+    1419,
+    1628,
+    29,
+    2424,
+    1902,
+    381,
+    23283,
+    2785,
+    220,
+    248058,
+    248059,
+    11535,
+    9212,
+    198,
+    12,
+    12296,
+    4868,
+    26834,
+    381,
+    5024,
+    198,
+    12,
+    1394,
+    1189,
+    3300,
+    9801,
+    31626,
+    364,
+    678,
+    709,
+    1562,
+    303,
+    5629,
+    3992,
+    54588,
+    279,
+    709,
+    1562,
+    11,
+    694,
+    4045,
+    1238,
+    198,
+    12,
+    1368,
+    1017,
+    369,
+    874,
+    709,
+    1562,
+    2420,
+    11,
+    4087,
+    279,
+    3296,
+    1040,
+    4472,
+    440,
+    678,
+    1428,
+    6337,
+    321,
+    635,
+    524,
+    3184,
+    279,
+    1156,
+    883,
+    709,
+    6526,
+    198,
+    510,
+    95328,
+    29,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    5834,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tools-empty-list-behaves-as-no-tools",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    5834,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tool-single",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "tool",
+     "content": "R1"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>user\n<tool_response>\nR1\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    49,
+    16,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tool-two-in-a-row-share-one-user-block",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "tool",
+     "content": "R1"
+    },
+    {
+     "role": "tool",
+     "content": "R2"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>user\n<tool_response>\nR1\n</tool_response>\n<tool_response>\nR2\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    49,
+    16,
+    198,
+    248067,
+    198,
+    248066,
+    198,
+    49,
+    17,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tool-three-in-a-row",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "tool",
+     "content": "R1"
+    },
+    {
+     "role": "tool",
+     "content": "R2"
+    },
+    {
+     "role": "tool",
+     "content": "R3"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>user\n<tool_response>\nR1\n</tool_response>\n<tool_response>\nR2\n</tool_response>\n<tool_response>\nR3\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    49,
+    16,
+    198,
+    248067,
+    198,
+    248066,
+    198,
+    49,
+    17,
+    198,
+    248067,
+    198,
+    248066,
+    198,
+    49,
+    18,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tool-directly-after-user",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "tool",
+     "content": "R"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>user\n<tool_response>\nR\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    49,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tool-then-text-then-tool",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "tool",
+     "content": "R1"
+    },
+    {
+     "role": "user",
+     "content": "R2"
+    },
+    {
+     "role": "tool",
+     "content": "R3"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>user\n<tool_response>\nR1\n</tool_response><|im_end|>\n<|im_start|>user\nR2<|im_end|>\n<|im_start|>user\n<tool_response>\nR3\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    49,
+    16,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    49,
+    17,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    49,
+    18,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "multi-step-tool-loop",
+   "messages": [
+    {
+     "role": "user",
+     "content": "weather in Paris and London?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Paris"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "18C"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris is 18C.",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "London"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "12C"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nweather in Paris and London?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n18C\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nParis is 18C.\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nLondon\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n12C\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    14764,
+    303,
+    11751,
+    321,
+    6924,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    27362,
+    67017,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8656,
+    29,
+    198,
+    57590,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    16,
+    23,
+    34,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    57590,
+    369,
+    220,
+    16,
+    23,
+    34,
+    13,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    27362,
+    67017,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    8656,
+    29,
+    198,
+    38261,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    248066,
+    198,
+    16,
+    17,
+    34,
+    198,
+    248067,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "tool-call-with-text-before-it",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "Let me look that up.",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "f",
+        "arguments": {
+         "a": 1
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nLet me look that up.\n\n<tool_call>\n<function=f>\n<parameter=a>\n1\n</parameter>\n</function>\n</tool_call><|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    9764,
+    728,
+    1353,
+    421,
+    685,
+    13,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    17572,
+    29,
+    198,
+    27,
+    15704,
+    23478,
+    29,
+    198,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "tool-call-without-function-wrapper",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "name": "f",
+       "arguments": {
+        "a": 1
+       }
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=f>\n<parameter=a>\n1\n</parameter>\n</function>\n</tool_call><|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    17572,
+    29,
+    198,
+    27,
+    15704,
+    23478,
+    29,
+    198,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "tool-call-two-calls",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "both:",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "a",
+        "arguments": {
+         "x": "1"
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "b",
+        "arguments": {}
+       }
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nboth:\n\n<tool_call>\n<function=a>\n<parameter=x>\n1\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=b>\n</function>\n</tool_call><|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    20385,
+    25,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    23478,
+    29,
+    198,
+    27,
+    15704,
+    24582,
+    29,
+    198,
+    16,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    198,
+    248058,
+    198,
+    27,
+    1628,
+    21402,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "tool-call-argument-types",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "f",
+        "arguments": {
+         "s": "str",
+         "i": 42,
+         "f": 1.5,
+         "b": true,
+         "bf": false,
+         "n": null,
+         "lst": [
+          1,
+          2
+         ],
+         "d": {
+          "x": 1
+         },
+         "neg": -0.5,
+         "tiny": 1e-05,
+         "huge": 1e+16,
+         "q": "it's \"quoted\""
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=f>\n<parameter=s>\nstr\n</parameter>\n<parameter=i>\n42\n</parameter>\n<parameter=f>\n1.5\n</parameter>\n<parameter=b>\nTrue\n</parameter>\n<parameter=bf>\nFalse\n</parameter>\n<parameter=n>\nNone\n</parameter>\n<parameter=lst>\n[1, 2]\n</parameter>\n<parameter=d>\n{\"x\": 1}\n</parameter>\n<parameter=neg>\n-0.5\n</parameter>\n<parameter=tiny>\n1e-05\n</parameter>\n<parameter=huge>\n1e+16\n</parameter>\n<parameter=q>\nit's \"quoted\"\n</parameter>\n</function>\n</tool_call><|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    17572,
+    29,
+    198,
+    27,
+    15704,
+    13744,
+    29,
+    198,
+    485,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    20741,
+    29,
+    198,
+    19,
+    17,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    17572,
+    29,
+    198,
+    16,
+    13,
+    20,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    21402,
+    29,
+    198,
+    2434,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    12849,
+    29,
+    198,
+    3913,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    21076,
+    29,
+    198,
+    3928,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    28,
+    35471,
+    29,
+    198,
+    58,
+    16,
+    11,
+    220,
+    17,
+    60,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    24600,
+    29,
+    198,
+    4754,
+    87,
+    763,
+    220,
+    16,
+    92,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    21076,
+    766,
+    29,
+    198,
+    12,
+    15,
+    13,
+    20,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    23251,
+    6239,
+    29,
+    198,
+    16,
+    68,
+    12,
+    15,
+    20,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    52298,
+    4580,
+    29,
+    198,
+    16,
+    68,
+    10,
+    16,
+    21,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    27,
+    15704,
+    60922,
+    29,
+    198,
+    275,
+    579,
+    328,
+    61574,
+    1,
+    198,
+    510,
+    15704,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "tool-call-no-arguments-key",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "type": "function",
+       "function": {
+        "name": "f"
+       }
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": false,
+   "expect_text": "<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=f>\n</function>\n</tool_call><|im_end|>\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271,
+    248058,
+    198,
+    27,
+    1628,
+    17572,
+    29,
+    198,
+    510,
+    1628,
+    29,
+    198,
+    248059,
+    248046,
+    198
+   ]
+  },
+  {
+   "name": "content-text-part-only",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "what is this?"
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nwhat is this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12195,
+    369,
+    411,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-image-then-text",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "image"
+      },
+      {
+       "type": "text",
+       "text": "what is this?"
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248053,
+    248056,
+    248054,
+    12195,
+    369,
+    411,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-two-images-with-ids",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "image"
+      },
+      {
+       "type": "image"
+      },
+      {
+       "type": "text",
+       "text": "what is this?"
+      }
+     ]
+    }
+   ],
+   "add_vision_id": true,
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nPicture 1: <|vision_start|><|image_pad|><|vision_end|>Picture 2: <|vision_start|><|image_pad|><|vision_end|>what is this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    23892,
+    220,
+    16,
+    25,
+    220,
+    248053,
+    248056,
+    248054,
+    23892,
+    220,
+    17,
+    25,
+    220,
+    248053,
+    248056,
+    248054,
+    12195,
+    369,
+    411,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-image-url-form",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "image_url": {
+        "url": "x"
+       }
+      },
+      {
+       "type": "text",
+       "text": "what is this?"
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248053,
+    248056,
+    248054,
+    12195,
+    369,
+    411,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-video-then-text",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "video"
+      },
+      {
+       "type": "text",
+       "text": "what is this?"
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|vision_start|><|video_pad|><|vision_end|>what is this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248053,
+    248057,
+    248054,
+    12195,
+    369,
+    411,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-mixed-parts",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "what is this?"
+      },
+      {
+       "type": "image"
+      },
+      {
+       "type": "text",
+       "text": " and this"
+      },
+      {
+       "type": "video"
+      }
+     ]
+    }
+   ],
+   "add_vision_id": true,
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nwhat is this?Picture 1: <|vision_start|><|image_pad|><|vision_end|> and thisVideo 1: <|vision_start|><|video_pad|><|vision_end|><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    12195,
+    369,
+    411,
+    30,
+    23892,
+    220,
+    16,
+    25,
+    220,
+    248053,
+    248056,
+    248054,
+    321,
+    411,
+    10408,
+    220,
+    16,
+    25,
+    220,
+    248053,
+    248057,
+    248054,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-parts-empty-text",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": ""
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-text-part-with-a-number",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": 5
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n5<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    20,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-text-part-with-a-list",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": [
+        "a",
+        1
+       ]
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n['a', 1]<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    659,
+    64,
+    504,
+    220,
+    16,
+    60,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-text-part-with-none",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": null
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nNone<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    3928,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-text-part-with-a-mapping",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": {
+        "a": 1
+       }
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n{'a': 1}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    13215,
+    64,
+    1170,
+    220,
+    16,
+    92,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-text-part-with-a-bool",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": false
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\nFalse<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    3913,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-system-list-of-text",
+   "messages": [
+    {
+     "role": "system",
+     "content": [
+      {
+       "type": "text",
+       "text": "sys"
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>system\nsys<|im_end|>\n<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    8678,
+    198,
+    7545,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    80,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "content-list-with-image-in-text-history",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "image"
+      },
+      {
+       "type": "text",
+       "text": "what is this?"
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "a cat"
+    },
+    {
+     "role": "user",
+     "content": "and now?"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_text": "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>what is this?<|im_end|>\n<|im_start|>assistant\na cat<|im_end|>\n<|im_start|>user\nand now?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+   "expect_ids": [
+    248045,
+    846,
+    198,
+    248053,
+    248056,
+    248054,
+    12195,
+    369,
+    411,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    64,
+    7993,
+    248046,
+    198,
+    248045,
+    846,
+    198,
+    429,
+    1381,
+    30,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+   ]
+  },
+  {
+   "name": "error-empty-messages",
+   "messages": [],
+   "add_generation_prompt": true,
+   "expect_error": "No messages provided."
+  },
+  {
+   "name": "error-system-not-first",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "system",
+     "content": "s"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "System message must be at the beginning."
+  },
+  {
+   "name": "error-two-systems",
+   "messages": [
+    {
+     "role": "system",
+     "content": "s1"
+    },
+    {
+     "role": "system",
+     "content": "s2"
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "System message must be at the beginning."
+  },
+  {
+   "name": "error-no-user-query",
+   "messages": [
+    {
+     "role": "system",
+     "content": "s"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "No user query found in messages."
+  },
+  {
+   "name": "error-no-user-query-only-tool-responses",
+   "messages": [
+    {
+     "role": "user",
+     "content": "<tool_response>\nR\n</tool_response>"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "No user query found in messages."
+  },
+  {
+   "name": "error-unknown-role-only-message",
+   "messages": [
+    {
+     "role": "wizard",
+     "content": "x"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "No user query found in messages."
+  },
+  {
+   "name": "error-unknown-role-after-query",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "wizard",
+     "content": "x"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "Unexpected message role."
+  },
+  {
+   "name": "error-system-content-is-a-mapping",
+   "messages": [
+    {
+     "role": "system",
+     "content": {
+      "a": 1
+     }
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "Unexpected content type."
+  },
+  {
+   "name": "error-user-content-is-a-mapping",
+   "messages": [
+    {
+     "role": "system",
+     "content": "s"
+    },
+    {
+     "role": "user",
+     "content": {
+      "a": 1
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "Unexpected content type."
+  },
+  {
+   "name": "error-user-content-is-a-number",
+   "messages": [
+    {
+     "role": "user",
+     "content": 7
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "Unexpected content type."
+  },
+  {
+   "name": "error-system-contains-an-image",
+   "messages": [
+    {
+     "role": "system",
+     "content": [
+      {
+       "type": "image"
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "System message cannot contain images."
+  },
+  {
+   "name": "error-system-contains-a-video",
+   "messages": [
+    {
+     "role": "system",
+     "content": [
+      {
+       "type": "video"
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "System message cannot contain videos."
+  },
+  {
+   "name": "error-item-type-in-content",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "audio"
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "Unexpected item type in content."
+  },
+  {
+   "name": "error-item-with-no-type-and-no-text",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "nope": 1
+      }
+     ]
+    }
+   ],
+   "add_generation_prompt": true,
+   "expect_error": "Unexpected item type in content."
+  }
+ ]
+}

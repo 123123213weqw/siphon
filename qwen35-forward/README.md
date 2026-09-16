@@ -45,15 +45,25 @@ gdn/                 the whole model
   unicode_gc.rs      general categories and NFC
   unicode_tables.rs  GENERATED Unicode tables (see tools/)
   tokenizer.rs       byte-level BPE, checked against a committed corpus
+  chat.rs            chat_template.jinja, branch for branch
+  chatparse.rs       the model's <tool_call> output back into arguments
+  pyjson.rs          JSON that matches Python's `json.dumps`, for `tojson`
   (GdnState, AttnState, Cache)  the two kinds of decode state
   gdncheck <bundle>  [--layer N] [--chain] [--model] [--verbose]   (golden)
-  qwenrun  <model-dir> [--text STR | --prompt ids] [--tokens N] [--cached]
-                       [--expect-tokens IDS] [--compare FILE]
-  tokcheck <model-dir> <corpus.json>                                (tokenizer)
+  qwenrun  <model-dir> [--text STR | --prompt ids | --chat STR ...] [--tokens N]
+                       [--cached] [--expect-tokens IDS] [--compare FILE]
+                       [--system STR] [--reply STR] [--tool-result STR]
+                       [--thinking] [--repl] [--show-prompt]
+                       [--tools JSON | --tools-file FILE]
+  tokcheck  <model-dir> <corpus.json>                               (tokenizer)
+  chatcheck <model-dir> <chat_corpus.json>                          (template)
 tok_corpus/          tokenizer conformance corpora, one per shipped pattern
+chat_corpus.json     chat-template conformance corpus: 79 cases, text + ids
 tools/ref_qwen35.py  the transformers reference: logits, per-layer dumps, greedy
 tools/gen_unicode_tables.py   regenerates unicode_tables.rs
 tools/make_tok_corpus.py      regenerates tok_corpus/*.json
+tools/make_chat_corpus.py     regenerates chat_corpus.json
+tools/mutate_chat.py          mutation-testing harness for the chat template
 golden_tiny/         committed bundle (gain=1.0, for per-tensor comparison)
 golden_sensitive/    committed bundle (gain=300, for token-trace comparison)
 ```
@@ -965,6 +975,211 @@ accept less from the incremental one, so it now asserts bit-exactness too -- and
 injection fails it. A tolerance is a statement about what you are willing to be wrong
 about, and that one was wrong.
 
+## Step nine: the chat template
+
+A trained model predicts a continuation. `chat_template.jinja` is what turns a
+conversation into the particular continuation worth predicting, and it is not
+decoration: the same weights given a role-less `User: 2+2?\nAssistant:` answer
+correctly and then keep writing a transcript, because that is what such a document
+looks like. Getting the template wrong does not produce an error. It produces a
+fluent answer to a slightly different question.
+
+The template ships as Jinja, so the honest way to implement it is to decide what
+each Jinja construct *does* and reproduce that, rather than to eyeball the prompt.
+Four things in it are not guessable and were measured on the real checkpoint:
+
+* **Rendering is one flat string.** Roles only choose the wrapper markers. There is
+  no per-message structure to get right or wrong.
+* **The `<think>` block is position-dependent.** An assistant turn gets
+  `<think>\n\n</think>\n\n` only if it comes *after* the last user query. An assistant
+  in the history does not -- it was already answered. So the template scans
+  backwards for the last user message, and a user message that is a wrapped
+  `<tool_response>…</tool_response>` does **not** end that scan, which is exactly
+  what makes a multi-step tool loop render correctly.
+* **`enable_thinking` is inverted from how it reads.** With it *false* the prompt
+  ends `<think>\n\n</think>\n\n` -- an empty think block, forcing the answer to start
+  immediately. With it *true* the prompt ends `<think>\n` and the model writes its own
+  reasoning first.
+* **Reasoning comes from one of two places.** `reasoning_content` if the message has
+  it, otherwise the text between `<think>` and `</think>` inside `content`.
+
+### Python's JSON, because `tojson` is not quite `json.dumps`
+
+Tool schemas reach the prompt through a `tojson` filter, so the bytes depend on
+Python's `json.dumps(..., ensure_ascii=False)`: `", "` and `": "` separators, dict
+order preserved, non-ASCII left literal. That is close to `serde_json`'s pretty
+printer and not close at all to its compact one, so `pyjson.rs` reimplements the
+parts that differ and is tested against Python's own output for the boundary cases
+-- including floats, where `1e15` stays decimal, `1e17` does not, `-0.0` prints
+`-0.0`, and the exponent is padded to two digits.
+
+The template's own rule is subtler than "JSON everything": argument values go through
+`tojson` **only if they are a mapping or a non-string sequence**, and through Python's
+`str` otherwise. So `42` renders `42`, `True` renders `True`, `None` renders `None`,
+`[1, 2]` renders `[1, 2]`, and a string renders as itself. Getting this wrong is
+invisible when the arguments are strings, which is most of the time.
+
+### Trimming is `str.strip`, not `str::trim`
+
+The template trims with Jinja's `|trim`, which is Python's `str.strip`, which removes
+`U+001C`-`U+001F`. Rust's `str::trim` does not. This is the kind of difference that
+shows up once in a million prompts and is silent when it does, so it is a named
+function with its own test rather than an inline `.trim()`.
+
+### The reply path
+
+`chatparse.rs` is the other half: the model's `<tool_call>` blocks back into a name
+and named arguments. Two decisions there are deliberate.
+
+Values stay **strings**. `<parameter=count>3</parameter>` yields `"3"`, not `3`,
+because inferring a type from text is how a tool gets called with the wrong type.
+Mapping onto the schema is the caller's job.
+
+Malformed blocks **error** instead of being dropped. A half-written call is dropped
+silently by a lenient parser, and the caller then sees a reply with no calls and
+answers the user as though no tool existed.
+
+The tests are built around one identity: **render, parse, render again, and the bytes
+must be unchanged.** That is what makes the two halves one system rather than two
+things that happen to agree on the examples someone thought to try.
+
+### Verification: 79 cases, compared as bytes
+
+`chat_corpus.json` is generated from the reference (`tools/make_chat_corpus.py`) and
+records, for each case, the **exact string the template produced** or the **exact
+error it raised**. The 79 cases are chosen one per branch: the four roles, the
+unknown role in both of its positions (which fail differently), the
+`last_query_index` scan and its tool-response skip, `reasoning_content` versus an
+inline `<think>` versus two of them, both `enable_thinking` states, the tools block
+with and without a system message, argument values of every type, consecutive
+`tool` results merging into one user block, a whole two-step tool loop, vision
+parts and `add_vision_id`, and fourteen malformed inputs that must be refused.
+
+```bash
+./target/release/chatcheck <model-dir> chat_corpus.json
+```
+
+```
+   cases            79
+   tokenizer        BPE  vocab 248044  added 33  pattern with marks
+   markers are single tokens: 248045 248046 248068 248069
+
+   text 65 ok  0 bad   ids 65 ok  0 bad   errors 14 ok  0 bad   reparses 0 bad
+   RESULT: PASS
+```
+
+Two of those columns exist because the text column alone is not enough.
+
+**The ids.** Each case also records the reference tokenizer's ids for the rendered
+text. A marker that renders correctly but is not a *single* added token would pass
+the text check and change what the model sees. That is not hypothetical -- see the
+next section.
+
+**The reparse.** Every case ending on an assistant turn is rendered, parsed, and
+re-rendered, and the continuation bytes must match. This is what caught a real bug:
+the parser was stripping trailing whitespace that the renderer then re-trimmed
+differently, so `render → parse → render` was not the identity. Twelve of the
+seventy-nine cases fail that check under the old code.
+
+### A tokenizer bug the id column caught
+
+`tokenizer.json` declares 26 added tokens. `tokenizer_config.json` declares 33. The
+config is the one that wins -- `AutoTokenizer` loads the file and then applies the
+config on top -- and the seven extras (`<|audio_start|>`, `<|audio_end|>`,
+`<tts_pad>`, `<tts_text_bos>`, `<tts_text_eod>`, `<tts_text_bos_single>`,
+`<|audio_pad|>`) were each being *split into pieces*:
+
+```
+<|audio_start|>   want [248070]
+                  got  [27, 91, 16245, 4747, 91, 29]      # < | audio _ start | >
+```
+
+Nothing about that looks wrong -- six plausible tokens, a decodable string, no
+error. It was found by encoding the same text two ways and comparing, which is why
+the corpus records ids and not just text. `from_model_dir` now merges the config's
+list in, longest-match-first and idempotently, and the probe that found it passes:
+42 cases / 61 ids, `RESULT: PASS`.
+
+### Nineteen injected bugs, all caught
+
+`tools/mutate_chat.py --model-dir <model>` applies one plausible mistake at a time,
+rebuilds, and runs `chatcheck`. An assertion nobody has seen fail is not evidence.
+
+| injected bug | first thing that fails |
+|---|---|
+| no trimming at all | case 4 `system-empty-and-whitespace` |
+| `str::trim` instead of `str.strip` | case 18 `trim-fs` (`U+001C`) |
+| the think block on the wrong assistants | case 6 `multi-turn-two` |
+| `last_query_index` takes the first user | case 6 `multi-turn-two` |
+| a wrapped tool response ends the scan | case 69, which must error and does not |
+| the blank line before a tool call is dropped | case 45 `multi-step-tool-loop` |
+| arguments through `str` instead of `tojson` | case 49 `tool-call-argument-types` |
+| an assistant turn not closed with `<|im_end|>` | case 6 |
+| a tool call always preceded by a blank line | case 45 |
+| `enable_thinking` inverted | case 0 `single-turn` |
+| every tool result gets its own user block | case 41 |
+| the vision id counter never advances | case 53 |
+| the parser discards content with a call | case 6 (reparse) |
+| the parser accepts an unterminated `<parameter>` | case 46 (reparse) |
+| compact JSON key separator | case 34 `tools-no-system` |
+| compact JSON array separator | case 38 |
+| the float exponent threshold off by one | case 38 |
+| a `"` in a tool description not escaped | case 38 |
+| a backspace written literally instead of `\b` | case 38 |
+
+```
+  caught 19   missed 0   not-tested 0
+  RESULT: PASS (every injection was caught)
+```
+
+Two harness bugs were found by running it, and both are the reason its output is
+trustworthy: it originally backed two files up to the *same* name (so every
+injection looked like a compile failure) and it counted a **compile failure as a
+catch**. A mutation that does not build has not been tested at all, and the summary
+now says so separately.
+
+### What it does, end to end
+
+`qwenrun --chat` renders, decodes until `<|im_end|>` (the checkpoint's `eos_token`,
+measured rather than assumed), and reads the continuation back.
+
+```
+$ qwenrun <model> --system "You are a terse assistant. Answer in one short sentence." \
+             --chat "What is the capital of France?" --tokens 20
+   "<|im_start|>system\nYou are a terse assistant. Answer in one short sentence.<|im_end|>\n
+    <|im_start|>user\nWhat is the capital of France?<|im_end|>\n
+    <|im_start|>assistant\n<think>\n\n</think>\n\n"
+   -> 36 tokens
+   2 token(s) in 4.68s    reply: "Paris."
+```
+
+The tool loop is two calls, with the first reply pasted back in:
+
+```
+$ qwenrun <model> --tools-file tools.json --chat "What is the weather in Paris right now?"
+   tool call: get_weather(city="Paris", units="metric")
+
+$ qwenrun <model> --tools-file tools.json --chat "..." \
+             --reply '<tool_call>…</tool_call>' --tool-result "18 degrees Celsius and cloudy"
+   reply: "The weather in Paris is currently 18 degrees Celsius with cloudy skies."
+```
+
+...and `--repl` keeps the history, so a third turn can ask a follow-up:
+
+```
+user> What is the capital of Japan?
+   reply: "The capital of Japan is **Tokyo**.
+user> Name one mountain there.
+   reply: "One of the most famous mountains in Japan is **Mount Fuji…"
+```
+
+Two honest limitations. With `--thinking` and a small `--tokens`, the model has not
+finished its reasoning when the budget runs out, so there is no `</think>` to split
+on and the whole continuation lands in `content` -- the parser is faithful, the
+truncation is the caller's. And vision parts render to real `<|image_pad|>` ids that
+this engine has no embedding for; the template counts them, `qwenrun` warns, and the
+vision tower is not implemented.
+
 ## The two committed bundles
 
 | | `golden_tiny` | `golden_sensitive` |
@@ -1134,6 +1349,9 @@ delta B2_H3_T5_K8_V8 : recurrent vs chunked  out 2.980e-08  state 1.192e-07
 - **No cache.** Greedy re-runs the whole forward each step, deliberately
   isolating the *math* from cache bookkeeping: if the trace diverges, the cause
   is the forward, not the cache. Cache semantics need their own reference.
+  *(Superseded: `gdn check --model --cached` and Step eight cover the cache; the
+  golden bundles still run uncached on purpose, and the KV buffers are not
+  pre-allocated.)*
 - **A tiny model with random weights** (367,952 parameters). It validates
   whether the math is implemented correctly, not whether the model is capable.
 - **`linear_num_value_heads=4` / `linear_num_key_heads=2`, deliberately ratio=2**,
@@ -1142,3 +1360,14 @@ delta B2_H3_T5_K8_V8 : recurrent vs chunked  out 2.980e-08  state 1.192e-07
   2B would miss this path entirely).
 - Validating a real model needs a separate reference (`--model-dir`), and a 27B
   in fp16 needs about 52 GiB of memory.
+- **Sampling is not implemented.** Decoding is greedy, which is why a base model
+  sometimes loops; temperature, top-p and repetition penalty are the fix and are
+  not here.
+- **The chat template is implemented, the vision tower is not.** Image and video
+  parts render to the right placeholder ids (checked against the reference), but
+  this engine loads only the language model, so those ids have no embedding
+  behind them. `qwenrun` says so rather than silently producing nonsense.
+- **`linear` parallelises by rows only**, so at `T=1` decode it uses one core of
+  88 and streams weights at ~1.8 GB/s. Measured at T=32 the same kernel reaches
+  **19x** when forced to use the thread pool, so this is the next real win and it
+  is a change to the inner loop, not to the algorithm.
