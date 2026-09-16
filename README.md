@@ -1,8 +1,9 @@
 # Siphon
 
-A fast safetensors weight loader, plus two companion trees that study the two
-ends of the same problem: **getting weights off the disk**, and **proving a
-from-scratch forward pass is numerically right**.
+A fast safetensors weight loader, plus three companion trees: one measures how
+much of cold-start cost is the disk rather than the language runtime, one is a
+golden harness that proves a hand-written forward pass is numerically right, and
+one runs a from-scratch RWKV7 forward pass and races it against llama.cpp.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
@@ -13,11 +14,13 @@ from-scratch forward pass is numerically right**.
 | [`siphon/`](siphon/) + [`csrc/`](csrc/) | Python + C++ | The loader itself: `safe_open`, six I/O backends, automatic backend selection. Consumes safetensors on the host and delivers tensors to the GPU. |
 | [`rust-qwen-engine/`](rust-qwen-engine/) | Rust | The same question asked from the other side: a safetensors reader on `io_uring` + `O_DIRECT`, built to measure how much of cold-start cost is the language runtime rather than the disk. |
 | [`qwen35-forward/`](qwen35-forward/) | Python + Rust | Golden-reference generator and comparator for validating a hand-written Qwen3.5 forward pass, down to individual tensors and tokens. |
+| [`rwkv7-engine/`](rwkv7-engine/) | Python + CUDA | A hand-written RWKV7 (G1j-2.9B) inference engine that loads through Siphon: a dependency-free forward pass, a custom Wkv kernel with fp16 I/O and fp32 state, and an acceptance harness that compares greedy tokens against llama.cpp. |
 
-**The three trees share no code.** `rust-qwen-engine/` and `qwen35-forward/`
-build with `cargo` and need no CUDA; they do not affect the extension's build,
-its dependencies, or its runtime. Install and build instructions below apply to
-the Python/C++ loader unless stated otherwise.
+**The companion trees share no code with each other**, and none of them affects
+the extension's build, its dependencies, or its runtime. `rust-qwen-engine/` and
+`qwen35-forward/` build with `cargo` and need no CUDA; `rwkv7-engine/` needs
+CUDA and a GPU, and is the only one that imports the loader. Install and build
+instructions below apply to the Python/C++ loader unless stated otherwise.
 
 ## The loader
 
@@ -303,6 +306,35 @@ The tree's README documents a trap confirmed by test: `Qwen3_5RMSNorm` computes
 every activation in the network and still runs to completion, producing only
 garbage.
 
+## The RWKV7 engine
+
+[`rwkv7-engine/`](rwkv7-engine/) — the forward pass the other two trees only
+reason about, written out and run: RWKV7-G1j-2.9B on a V100, fp16 weights with
+an fp32 Wkv state, loaded through `siphon.safe_open` and forwarded with neither
+`transformers` nor FLA imported.
+
+The Wkv recurrence is the model's whole sequential part, one line per head:
+
+```
+state = exp(w_t) * state + (a_t · state) * b_t + k_t * v_t
+o_t   = state · r_t
+```
+
+with `a = -kk`, `b = kk * a`, `kk = l2norm(k * k_k)`. It runs in a custom CUDA
+kernel (`rwkv7_engine/wkv_kernel.cu`) built by a plain `nvcc` invocation, so it
+does not depend on the torch CUDA version. Everything around it — token-shift,
+the six `addcmul`s, the four low-rank adapters (decay, iclr, value-residual,
+output gate), the group norm and the channel mix — is a separate operator, and
+each has its own checker (`layer_check.py`, `split_check.py`, `tri_check.py`,
+`greedy_check.py`, and the kernel-vs-pure-torch `tests/test_wkv.py`), so a wrong
+one is located rather than inferred.
+
+`run_correctness.sh` is the acceptance path: it starts `llama-server` on the f16
+GGUF, compares greedy tokens prompt by prompt, then compares per-token logits
+against the HF/FLA reference. `bench_compare.sh` measures cold load, prefill and
+decode for both engines side by side. The tree commits no recorded results;
+those scripts write them where you point them.
+
 ## Repository layout
 
 ```
@@ -312,6 +344,7 @@ docs/                      Loader internals, benchmark notes, Sphinx API docs
 tests/                     Loader tests and the benchmark harness
 rust-qwen-engine/          Rust safetensors reader (independent cargo workspace)
 qwen35-forward/            Forward golden harness (Python + independent cargo workspace)
+rwkv7-engine/              RWKV7 inference engine (Python + CUDA kernel)
 ```
 
 ## Origin, attribution and license
@@ -322,5 +355,5 @@ is developed here as its own line of work. The original code is Apache-2.0
 licensed; that license and the attribution above are retained as required.
 
 Subsequent changes in this repository — including the page-cache probe in
-automatic backend selection, and the two companion trees — are likewise
+automatic backend selection, and the companion trees — are likewise
 Apache-2.0. See [`LICENSE`](LICENSE).
