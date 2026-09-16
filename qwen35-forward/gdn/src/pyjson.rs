@@ -81,6 +81,19 @@ impl Value {
         }
     }
 
+    /// A number as an `f64`, whether the parser called it an int or a float.
+    ///
+    /// JSON has one number type; this parser keeps `Int` and `Float` apart so that
+    /// `repr`-style output can tell `1` from `1.0`. Readers that just want the value
+    /// should come through here.
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Value::Int(i) => Some(*i as f64),
+            Value::Float(f) => Some(*f),
+            _ => None,
+        }
+    }
+
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),

@@ -48,6 +48,7 @@ gdn/                 the whole model
   chat.rs            chat_template.jinja, branch for branch
   chatparse.rs       the model's <tool_call> output back into arguments
   pyjson.rs          JSON that matches Python's `json.dumps`, for `tojson`
+  sample.rs          the ten logits filters, the draw, and the RNG
   (GdnState, AttnState, Cache)  the two kinds of decode state
   gdncheck <bundle>  [--layer N] [--chain] [--model] [--verbose]   (golden)
   qwenrun  <model-dir> [--text STR | --prompt ids | --chat STR ...] [--tokens N]
@@ -55,15 +56,24 @@ gdn/                 the whole model
                        [--system STR] [--reply STR] [--tool-result STR]
                        [--thinking] [--repl] [--show-prompt]
                        [--tools JSON | --tools-file FILE]
+                       [--temperature T] [--top-k K] [--top-p P] [--min-p P]
+                       [--typical-p P] [--repetition-penalty P] [--seed N]
+                       [--presence-penalty P] [--frequency-penalty P]
+                       [--no-repeat-ngram-size N]
   tokcheck  <model-dir> <corpus.json>                               (tokenizer)
   chatcheck <model-dir> <chat_corpus.json>                          (template)
+  samplecheck <sample_corpus.json> [--frequency N]                  (sampling)
 tok_corpus/          tokenizer conformance corpora, one per shipped pattern
 chat_corpus.json     chat-template conformance corpus: 79 cases, text + ids
+sample_corpus.json   sampling conformance corpus: 800 cases, filtered logits
 tools/ref_qwen35.py  the transformers reference: logits, per-layer dumps, greedy
 tools/gen_unicode_tables.py   regenerates unicode_tables.rs
 tools/make_tok_corpus.py      regenerates tok_corpus/*.json
 tools/make_chat_corpus.py     regenerates chat_corpus.json
+tools/make_sample_corpus.py   regenerates sample_corpus.json
 tools/mutate_chat.py          mutation-testing harness for the chat template
+tools/mutate_sample.py        mutation-testing harness for the sampler
+tools/probe_sample.py         probes the reference's filter semantics
 golden_tiny/         committed bundle (gain=1.0, for per-tensor comparison)
 golden_sensitive/    committed bundle (gain=300, for token-trace comparison)
 ```
@@ -1180,6 +1190,240 @@ truncation is the caller's. And vision parts render to real `<|image_pad|>` ids 
 this engine has no embedding for; the template counts them, `qwenrun` warns, and the
 vision tower is not implemented.
 
+## Step ten: sampling
+
+Greedy decoding is why a base model loops. On the real checkpoint:
+
+```
+$ qwenrun <model> --text "The capital of France is" --tokens 12 --cached
+   generated text: " Paris.\nThe capital of France is Paris.\nThe"
+
+$ qwenrun <model> --text "The capital of France is" --tokens 12 --cached \
+         --temperature 0.8 --top-p 0.95 --repetition-penalty 1.15 --seed 1
+   generated text: " located at latitude 48° 26′ N"
+```
+
+The second one is worse writing and better sampling: the argmax of a sharp distribution is
+the same token every time, so greedy walks into the highest-probability loop it can find.
+
+### The pipeline is ten filters and an order
+
+The order is not a design choice, it is what the reference runs, read off
+`_get_logits_processor`:
+
+```text
+repetition_penalty -> presence -> frequency -> no_repeat_ngram -> temperature
+  -> top_k -> top_p -> min_p -> typical_p -> (log_softmax if renormalize_logits)
+```
+
+`presence_penalty` and `frequency_penalty` are the odd ones out: **they are not in
+transformers 5.16 at all.** The classes were removed and `generation_config` reports them as
+absent. They are implemented here because serving stacks expect them, from the documented
+formula, and they are the only filters in the tree that are not compared against the
+reference. `samplecheck` says so on every run rather than leaving it implicit.
+
+### Five filters that are not what they look like
+
+Each of these produces **valid probabilities and a plausible token** when it is wrong. None of
+them crashes, none produces `NaN`, and none is visible in a single sample.
+
+**`top_k` thresholds; it does not sort.** The reference masks `scores < kth_largest`, so ties
+at the boundary all survive and `top_k` can keep *more* than `k`:
+
+```
+[1.0, 1.0, 1.0, 1.0, 0.5, 0.5]   top_k=1  ->  keeps 4 tokens
+                                  top_k=5  ->  keeps 6
+```
+
+Sorting and truncating is the natural implementation and it disagrees.
+
+**`top_p` sorts ascending and removes from the small end.** It removes the tokens whose
+ascending cumulative mass is `<= 1 - top_p`. Written descending -- "keep the smallest set whose
+mass reaches `top_p`" -- it sounds equivalent, and it is, except at ties, where the two
+directions pick different survivors:
+
+```
+probs .5 .25 .125 .0625 .0625     top_p=0.9
+   ascending  (the reference)  keeps [0, 1, 2, 4]
+   descending (the obvious)    keeps [0, 1, 2, 3]
+```
+
+Ties are not rare. They are what a model produces when it is unsure between two spellings.
+
+**`repetition_penalty` is applied once per *distinct* token**, and it is asymmetric:
+`score < 0 ? score * p : score / p`. The reference gathers the original scores and scatters
+them back, so a token appearing five times is penalised once -- `1.5x`, not `1.5^5 = 7.6x`.
+That is the difference between a nudge and a ban, and looping over the history directly gives
+the second one.
+
+**`min_p` computes its own softmax**, over whatever `top_k` and `top_p` already removed, and
+compares with a strict `<`. So a token exactly at the threshold survives, and `min_p = 1.0`
+keeps the argmax.
+
+**`typical_p` needs `nansum`, not `sum`.** Its entropy is `-(log p * p)`, and for a masked
+token `log p` is `-inf` while `p` is `0`, so the product is `NaN`. `nansum` skips it; a plain
+`sum` propagates it, the threshold becomes `NaN`, every comparison is false, and the filter
+becomes a silent no-op **precisely on the masked inputs where it is meant to matter**.
+
+### The threshold is computed in `f64` and compared in `f32`
+
+This one is worth spelling out because it is a single bit. The reference holds `top_p` as a
+Python float, computes `1 - top_p` in `f64`, and compares an `f32` cumulative-sum tensor
+against it -- which promotes the scalar to `f32`. For `top_p = 0.8` that scalar is
+`0.19999999999999996`, whose `f32` rounding is `0.20000000298023224`, and the 20th of 96 equal
+tokens has a cumulative mass of *exactly* that. The comparison is an equality and the token is
+included.
+
+Store `top_p` as an `f32` and the threshold becomes `0.19999998807907104` -- **one ulp below**
+-- the token is excluded, and the truncation is off by one. So `SamplerConfig`'s probability
+fields are `f64`, and `top_p_threshold` is a named function so that a checker asking "is this
+case ambiguous?" asks with the same number the filter used. That last part is not tidiness; a
+mutation slipped through because the checker recomputed the threshold itself and therefore
+could not see a wrong one.
+
+### The draw
+
+`splitmix64` for the generator, chosen for being reproducible in a dozen lines: the whole state
+is one `u64`, so a seed gives the same stream on every machine and every build.
+
+Then an ascending-by-token-id inverse CDF rather than a descending-by-probability walk. Both
+give the same distribution; ascending id needs no sort order carried around.
+
+**This cannot match the reference token for token**, and no amount of care would make it: the
+generators differ. What can be compared is the distribution, and `samplecheck --frequency`
+does that -- five cases, 100k-200k draws each, every empirical frequency within 5 sigma of its
+probability, every masked token never drawn, and the full tail reached.
+
+The `f64` accumulation in the walk is there for a related reason: a 24-bit generator makes any
+token with probability below `6e-8` **literally unreachable**, which is exactly the tail that
+sampling exists to explore.
+
+### Verification: 800 cases, compared stage by stage
+
+`sample_corpus.json` is generated from the reference by `tools/make_sample_corpus.py`. It needs
+no model: the filters are functions of a logits vector, so each case is an input vector and the
+reference's **complete filtered vector**. That is stronger than comparing which tokens survived
+-- a wrong temperature or a wrong penalty magnitude changes values without changing the support,
+and a support-only check would call that a pass.
+
+The inputs are shaped for the boundaries rather than to look realistic: ties at the truncation
+boundary, a cumulative sum landing exactly on the threshold, an all-equal vector, a long tail, a
+vector with `-inf` already present, `±100` (which overflows an unguarded `exp`), and an
+all-negative vector to pin the penalty's sign branch. 39 settings, including combinations, so
+that the *order* is observable -- a corpus that sets one filter at a time cannot catch a wrong
+order, and three of the mutations below are order mutations.
+
+```bash
+./target/release/samplecheck sample_corpus.json --frequency 100000
+```
+
+```
+   order is the reference's: repetition_penalty -> ... -> min_p -> typical_p
+   note: presence_penalty and frequency_penalty are not in this reference version, so
+         their placement is the documented order and is not reference-confirmed
+
+   logits 799 ok  0 bad   (799 bit-exact, 0 within one ulp)
+
+   1 case(s) where the reference's `top_p` boundary lands within 2 ulp of the
+   threshold, so the kept count is decided by its internal scan precision and not
+   by the rule. Reported, not failed:
+     case 172 flat|empty|{"top_p": 0.75}: masks 24 of 96, cumulative mass 0.24999999999999989
+       vs threshold 0.25000000000000000 (2 ulp, gap 1.11e-16)
+
+   RESULT: PASS
+```
+
+**799 of 800 are bit-exact**, and the one that is not is named with its numbers. On 96 equal
+logits and `top_p = 0.75`, the mass of the 24 smallest is `0.24999999999999989` -- two ulp
+*below* `0.25` -- so the rule says to mask the 24th and the reference does. A left-folded `f32`
+sum rounds it just above and stops at 23. The accurate `f64` sum agrees with the rule, and with
+`f64` accumulation the corpus agreement drops to **794**, because the reference's scan is `f32`
+too. So the `f32` sum is the closer model of it, which is a slightly uncomfortable thing to
+write down and is written down rather than hidden.
+
+### Where ties make the check impossible, and what is done about it
+
+`torch.sort` is not stable. On vectors with duplicate values its radix sort returns an
+effectively arbitrary permutation, and that permutation **is** observable: `top_p`'s ascending
+scan masks the tokens it sees first, so when several tokens tie at the truncation boundary,
+which one is masked depends on the sort order. There is no implementation of that order to
+copy -- it is a property of how torch hands 32 elements at a time to a bitonic network.
+
+So the comparison is on the **sorted** filtered vectors:
+
+* when the input has no duplicate values the mask set determines the values one for one, so
+  sorted equality is exactly per-index equality, and the checker demands per-index equality too;
+* when duplicates exist, the multiset is what is compared, and the index-level differences are
+  **counted and printed** rather than passed over.
+
+```
+   480 of 800 cases have duplicate input logits; there the reference's radix sort
+   order decides which of several tied tokens is masked, so those are compared as a
+   multiset rather than index for index
+   of those, 38 differ at the index level -- the reference's tie-break, which is not
+   reproducible; every duplicate-free case is compared index for index
+```
+
+38 of 480. That number is the residual blindness, and it is in the output rather than in a
+comment.
+
+### Twenty-four injected bugs, all caught
+
+`tools/mutate_sample.py --corpus sample_corpus.json --frequency 40000`.
+
+| injected bug | caught by |
+|---|---|
+| `top_k` sorts and truncates (ties do not all survive) | corpus |
+| `top_k` drops the token exactly at the boundary | corpus |
+| `top_p` threshold from an `f32` config value | unit tests |
+| `top_p` tests `<` instead of `<=` | corpus |
+| `top_p` loses `min_tokens_to_keep` | corpus |
+| `top_p` scans descending | corpus |
+| `min_p` against an unnormalised softmax | corpus |
+| `min_p` drops the token exactly at the threshold | corpus |
+| `typical_p` uses `sum` instead of `nansum` | corpus |
+| `typical_p`'s `last_ind` off by one | unit tests |
+| `typical_p` never cuts anything | corpus |
+| repetition penalty per occurrence, not per distinct token | corpus |
+| repetition penalty symmetric (no sign branch) | corpus + unit tests |
+| `presence_penalty` becomes per-occurrence | unit tests |
+| `frequency_penalty` becomes per-token | unit tests |
+| `no_repeat_ngram` bans the window's first token | corpus + unit tests |
+| `no_repeat_ngram` matches the wrong window | corpus + unit tests |
+| `no_repeat_ngram` treats size 1 as on | unit tests |
+| `temperature` after `top_k` instead of before | corpus |
+| the draw walks descending by id | unit tests |
+| the draw takes the last token over the threshold | corpus + unit tests |
+| the draw halves each mass | corpus + unit tests |
+| the RNG drops its second mix step | unit tests |
+| the RNG has 24 bits of resolution instead of 53 | unit tests |
+
+```
+  caught 24   missed 0   not-tested 0
+  RESULT: PASS (every injection was caught)
+```
+
+Three lessons came out of running it, and each changed the harness:
+
+**One oracle was not enough, and the harness now runs two.** The corpus is the stronger check
+for anything the reference implements, but it cannot see `presence_penalty` or
+`frequency_penalty` (absent from this version), nor the `select` walk or the RNG (no reference
+to compare against), nor a boundary condition that this particular corpus happens not to
+contain. Those eight mutations were reported as *missed* until the harness also ran the unit
+tests. A mutation now counts as caught if either fails, and the output names which.
+
+**The RNG's output is its specification, so it is pinned.** "The distribution is right over
+many draws" is weak: dropping a mix step from `splitmix64` leaves a bijection with decent
+avalanche, so the mean and the bucket counts stay plausible and only the *values* change. There
+is now a golden-vector test with the exact `(state, output)` pairs from the algorithm's
+definition, in integer arithmetic.
+
+**A boundary tolerance hid a real bug.** `samplecheck` excuses a one-token difference when the
+boundary is undecidable, and it decided that by recomputing the threshold itself. With the
+threshold moved into `top_p_threshold`, which the checker now calls, the "wrong threshold"
+mutation stopped looking ambiguous and became catchable. A tolerance is a statement about what
+you are willing to be wrong about, and that one was covering something it was not meant to.
+
 ## The two committed bundles
 
 | | `golden_tiny` | `golden_sensitive` |
@@ -1360,9 +1604,12 @@ delta B2_H3_T5_K8_V8 : recurrent vs chunked  out 2.980e-08  state 1.192e-07
   2B would miss this path entirely).
 - Validating a real model needs a separate reference (`--model-dir`), and a 27B
   in fp16 needs about 52 GiB of memory.
-- **Sampling is not implemented.** Decoding is greedy, which is why a base model
-  sometimes loops; temperature, top-p and repetition penalty are the fix and are
-  not here.
+- **Sampling cannot be compared token for token with the reference.** The
+  distribution can, and is (five cases, 100k-200k draws, every frequency within 5
+  sigma); the token cannot, because the generators differ.
+- **`presence_penalty` and `frequency_penalty` are not reference-confirmed.** They
+  are not in transformers 5.16 at all, so their formulas and their place in the
+  order are the documented ones and nothing more.
 - **The chat template is implemented, the vision tower is not.** Image and video
   parts render to the right placeholder ids (checked against the reference), but
   this engine loads only the language model, so those ids have no embedding

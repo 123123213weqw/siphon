@@ -24,6 +24,7 @@ use gdn::chatparse;
 use gdn::model;
 use gdn::pyjson;
 use gdn::real;
+use gdn::sample::{Sampler, SamplerConfig};
 
 /// One turn on the command line, in the order it was written.
 ///
@@ -110,6 +111,7 @@ fn run_chat(
     steps: usize,
     repl: bool,
     show_prompt: bool,
+    sampler_cfg: SamplerConfig,
 ) -> ExitCode {
     // `<|im_end|>` is the checkpoint's `eos_token` -- measured from
     // `tokenizer_config.json`, not assumed -- and the template closes every turn
@@ -174,14 +176,30 @@ fn run_chat(
         // (the assistant block is closed and re-emitted as history), so the cached
         // prefix would not survive the re-render anyway.
         let t0 = std::time::Instant::now();
-        let (generated, _, stopped) =
+        let (generated, _, stopped) = if sampler_cfg.is_greedy() {
             match model::greedy_cached_stopping(c, w, &prompt, steps, &stop) {
                 Ok(x) => x,
                 Err(e) => {
                     eprintln!("decode failed: {e}");
                     return ExitCode::FAILURE;
                 }
+            }
+        } else {
+            let mut s = match Sampler::new(sampler_cfg) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::FAILURE;
+                }
             };
+            match model::sample_stopping(c, w, &prompt, steps, &mut s, &stop) {
+                Ok((ids, tr, hit)) => (ids, tr, hit),
+                Err(e) => {
+                    eprintln!("decode failed: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        };
         let secs = t0.elapsed().as_secs_f64();
 
         // The prompt ends inside the assistant turn, so everything generated is the
@@ -190,9 +208,10 @@ fn run_chat(
         let reply = chatparse::parse_assistant(&continuation);
         println!();
         println!(
-            "   {} token(s) in {secs:.2}s ({:.2}s/token){}",
+            "   {} token(s) in {secs:.2}s ({:.2}s/token)  [{}]{}",
             generated.len(),
             secs / generated.len().max(1) as f64,
+            describe_sampling(&sampler_cfg),
             if stopped { "" } else { "  [hit the step limit, not <|im_end|>]" }
         );
         println!("   generated ids: {}", generated.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","));
@@ -240,6 +259,76 @@ fn parse_list(s: &str) -> Result<Vec<u32>, String> {
         .collect()
 }
 
+/// The sampling flags, as a `SamplerConfig`.
+///
+/// Every one of these is read from the command line rather than defaulted in the library, so
+/// the defaults here and `SamplerConfig::default` cannot disagree in a way that matters: an
+/// absent flag means "off", which is what the default is.
+fn sampler_from_args(args: &[String]) -> Result<SamplerConfig, String> {
+    let get = |n: &str| -> Option<String> {
+        args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned()
+    };
+    let f = |n: &str, d: f64| -> Result<f64, String> {
+        match get(n) {
+            None => Ok(d),
+            Some(v) => v.parse::<f64>().map_err(|e| format!("{n} {v:?}: {e}")),
+        }
+    };
+    let u = |n: &str, d: usize| -> Result<usize, String> {
+        match get(n) {
+            None => Ok(d),
+            Some(v) => v.parse::<usize>().map_err(|e| format!("{n} {v:?}: {e}")),
+        }
+    };
+    let cfg = SamplerConfig {
+        temperature: f("--temperature", 0.0)?,
+        top_k: u("--top-k", 0)?,
+        top_p: f("--top-p", 1.0)?,
+        min_p: f("--min-p", 0.0)?,
+        typical_p: f("--typical-p", 1.0)?,
+        repetition_penalty: f("--repetition-penalty", 1.0)?,
+        presence_penalty: f("--presence-penalty", 0.0)?,
+        frequency_penalty: f("--frequency-penalty", 0.0)?,
+        no_repeat_ngram_size: u("--no-repeat-ngram-size", 0)?,
+        seed: u("--seed", 0)? as u64,
+    };
+    cfg.validate()?;
+    Ok(cfg)
+}
+
+/// How to describe the sampler in one line: which filters are on, and the seed.
+fn describe_sampling(c: &SamplerConfig) -> String {
+    if c.is_greedy() {
+        return "greedy".to_string();
+    }
+    let mut parts = vec![format!("temperature {}", c.temperature)];
+    if c.top_k > 0 {
+        parts.push(format!("top_k {}", c.top_k));
+    }
+    if c.top_p < 1.0 {
+        parts.push(format!("top_p {}", c.top_p));
+    }
+    if c.min_p > 0.0 {
+        parts.push(format!("min_p {}", c.min_p));
+    }
+    if c.typical_p > 0.0 && c.typical_p < 1.0 {
+        parts.push(format!("typical_p {}", c.typical_p));
+    }
+    if c.repetition_penalty != 1.0 {
+        parts.push(format!("repetition_penalty {}", c.repetition_penalty));
+    }
+    if c.presence_penalty != 0.0 {
+        parts.push(format!("presence_penalty {}", c.presence_penalty));
+    }
+    if c.frequency_penalty != 0.0 {
+        parts.push(format!("frequency_penalty {}", c.frequency_penalty));
+    }
+    if c.no_repeat_ngram_size > 0 {
+        parts.push(format!("no_repeat_ngram_size {}", c.no_repeat_ngram_size));
+    }
+    format!("sampling: {}  seed {}", parts.join(", "), c.seed)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let val = |name: &str| -> Option<String> {
@@ -251,7 +340,10 @@ fn main() -> ExitCode {
              \x20                    [--tokens N] [--topk K] [--cached] [--expect-tokens IDS]\n\
              \x20                    [--dump-logits FILE] [--compare FILE]\n\
              \x20       chat: --system S --chat S --reply S --tool-result S --thinking --repl\n\
-             \x20             --tools-file FILE.json | --tools JSON"
+             \x20             --tools-file FILE.json | --tools JSON\n\
+             \x20       sampling: --temperature T --top-k K --top-p P --min-p P --typical-p P\n\
+             \x20                 --repetition-penalty P --presence-penalty P\n\
+             \x20                 --frequency-penalty P --no-repeat-ngram-size N --seed N"
         );
         return ExitCode::from(2);
     };
@@ -444,6 +536,13 @@ fn main() -> ExitCode {
         } else {
             Vec::new()
         };
+        let sampler_cfg = match sampler_from_args(&args) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        };
         let opts = chat::Options {
             add_generation_prompt: true,
             enable_thinking: args.iter().any(|a| a == "--thinking"),
@@ -474,6 +573,7 @@ fn main() -> ExitCode {
             steps,
             repl,
             args.iter().any(|a| a == "--show-prompt"),
+            sampler_cfg,
         );
     }
 
@@ -691,11 +791,26 @@ fn main() -> ExitCode {
         }
     }
 
-    // ---- greedy -----------------------------------------------------------
+    // ---- greedy or sampled ------------------------------------------------
+    let sampler_cfg = match sampler_from_args(&args) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut sampler = match Sampler::new(sampler_cfg) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     if steps > 0 {
         println!();
         println!(
-            "   greedy decoding {steps} token(s){}",
+            "   {} {steps} token(s){}",
+            describe_sampling(&sampler_cfg),
             if use_cache { " [cached: prefill once, then one token per step]" } else { " [no cache: whole prefix re-run each step]" }
         );
         let mut ids = prompt.clone();
@@ -706,7 +821,39 @@ fn main() -> ExitCode {
         let mut produced: Vec<u32> = Vec::with_capacity(steps);
         let mut cache_note = String::new();
 
-        if use_cache {
+        if !sampler_cfg.is_greedy() && use_cache {
+            // Sampling with a cache: the same loop as greedy, with the draw in place of the
+            // argmax. Kept here rather than in `model` so the two paths stay comparable.
+            let t = match model::sample_stopping(c, &rm.weights, &prompt, steps, &mut sampler, &[]) {
+                Ok((ids, _, _)) => ids,
+                Err(e) => {
+                    eprintln!("sampling failed: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            // The whole sequence is decoded in one call, so there is no per-step timing to
+            // report -- printing `t2.elapsed()` inside the loop would print the same total
+            // once per step, which reads as a per-step time and is not one.
+            for (k, nxt) in t.iter().enumerate() {
+                ids.push(*nxt);
+                produced.push(*nxt);
+                match &tokenizer {
+                    Some(tk) => println!(
+                        "     step {k:>2}  len={:<4} -> {:>7}  {:?}",
+                        ids.len() - 1,
+                        nxt,
+                        tk.decode(&[*nxt])
+                    ),
+                    None => println!("     step {k:>2}  len={:<4} -> {nxt}", ids.len() - 1),
+                }
+            }
+            println!(
+                "     {} token(s) in {:.2}s ({:.3}s/token)",
+                t.len(),
+                t2.elapsed().as_secs_f64(),
+                t2.elapsed().as_secs_f64() / t.len().max(1) as f64
+            );
+        } else if use_cache {
             let mut cache = match model::Cache::new(c, &rm.weights, 1) {
                 Ok(x) => x,
                 Err(e) => {

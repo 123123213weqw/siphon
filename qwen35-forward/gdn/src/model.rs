@@ -375,7 +375,51 @@ pub fn greedy_cached_stopping(
     Ok((generated, traces, false))
 }
 
-/// Greedy decoding: run, take the argmax of the last position, append, repeat.
+/// Decode with a sampler, stopping on any of `stop`.
+///
+/// `history` grows with every token and is what the penalties read, so it starts as the
+/// prompt -- the reference passes the whole `input_ids` to its processors for the same
+/// reason. Returns the generated ids (the stop token is not included), the traces, and
+/// whether a stop token was hit.
+///
+/// The `f32` logits are copied out of the trace before filtering, because the filters mutate
+/// in place and the trace is also the record of what the model actually produced. Filtering
+/// the trace itself would make the trace unreadable as evidence.
+pub fn sample_stopping(
+    mcfg: &ModelConfig,
+    w: &ModelWeights,
+    prompt: &[u32],
+    steps: usize,
+    sampler: &mut crate::sample::Sampler,
+    stop: &[u32],
+) -> Result<(Vec<u32>, Vec<ModelTrace>, bool), String> {
+    if prompt.is_empty() {
+        return Err("empty prompt".to_string());
+    }
+    let mut cache = Cache::new(mcfg, w, 1)?;
+    let mut tr = forward_cached(mcfg, w, &mut cache, prompt)?;
+    let mut history: Vec<u32> = prompt.to_vec();
+    let mut generated = Vec::with_capacity(steps);
+    let mut traces = Vec::with_capacity(steps);
+    for _ in 0..steps {
+        let mut logits = tr.last_logits().to_vec();
+        if !logits.iter().all(|x| x.is_finite()) {
+            let bad = logits.iter().filter(|x| !x.is_finite()).count();
+            return Err(format!("{bad} non-finite logits at step {}", generated.len()));
+        }
+        let nxt = sampler.next(&mut logits, &history)?;
+        if stop.contains(&nxt) {
+            return Ok((generated, traces, true));
+        }
+        generated.push(nxt);
+        history.push(nxt);
+        traces.push(tr);
+        tr = forward_cached(mcfg, w, &mut cache, &[nxt])?;
+    }
+    Ok((generated, traces, false))
+}
+
+/// Greedy decoding: run, take the argmax of the last position, append, repeat./// Greedy decoding: run, take the argmax of the last position, append, repeat.
 ///
 /// Mirrors the reference's loop exactly, including re-running the full sequence each
 /// step rather than using a cache.

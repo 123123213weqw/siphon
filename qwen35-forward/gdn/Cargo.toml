@@ -21,6 +21,10 @@ path = "src/bin/tokcheck.rs"
 name = "chatcheck"
 path = "src/bin/chatcheck.rs"
 
+[[bin]]
+name = "samplecheck"
+path = "src/bin/samplecheck.rs"
+
 [dependencies]
 goldenbundle = { path = "../bundle" }
 deltarule = { path = "../delta" }

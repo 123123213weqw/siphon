@@ -47,6 +47,7 @@ pub mod model;
 pub mod pyjson;
 pub mod real;
 pub mod safetensors;
+pub mod sample;
 pub mod tokenizer;
 pub mod unicode_gc;
 pub mod unicode_tables;

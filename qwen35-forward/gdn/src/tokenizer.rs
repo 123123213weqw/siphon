@@ -221,8 +221,11 @@ fn match_symbols(c: &[char], i: usize, marks_join: bool) -> Option<usize> {
     let n = c.len();
     // When marks do not join letters they are, by this rule's definition, symbols --
     // which is exactly what makes them their own pieces.
+    // A "symbol" is anything that is none of the four classes above; `marks_join` folds
+    // combining marks into the letter class, so it decides whether they count as symbols.
     let is_sym = |x: char| {
-        !x.is_whitespace() && !is_letter(x) && !is_number(x) && !(marks_join && is_mark(x))
+        let is_mark_like = marks_join && is_mark(x);
+        !x.is_whitespace() && !is_letter(x) && !is_number(x) && !is_mark_like
     };
 
     let start = if c[i] == ' ' { i + 1 } else { i };
