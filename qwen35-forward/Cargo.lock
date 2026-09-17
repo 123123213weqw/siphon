@@ -16,6 +16,7 @@ dependencies = [
  "deltarule",
  "goldenbundle",
  "serde_json",
+ "shell-text",
 ]
 
 [[package]]
@@ -98,6 +99,10 @@ dependencies = [
  "serde_core",
  "zmij",
 ]
+
+[[package]]
+name = "shell-text"
+version = "0.1.0"
 
 [[package]]
 name = "syn"

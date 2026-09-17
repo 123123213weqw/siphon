@@ -14,13 +14,19 @@ one runs a from-scratch RWKV7 forward pass and races it against llama.cpp.
 | [`siphon/`](siphon/) + [`csrc/`](csrc/) | Python + C++ | The loader itself: `safe_open`, six I/O backends, automatic backend selection. Consumes safetensors on the host and delivers tensors to the GPU. |
 | [`rust-qwen-engine/`](rust-qwen-engine/) | Rust | The same question asked from the other side: a safetensors reader on `io_uring` + `O_DIRECT`, built to measure how much of cold-start cost is the language runtime rather than the disk. |
 | [`qwen35-forward/`](qwen35-forward/) | Python + Rust | Golden-reference generator and comparator for validating a hand-written Qwen3.5 forward pass, down to individual tensors and tokens. |
+| [`shell/`](shell/) | Rust | Model-agnostic helpers shared by the trees rather than copied into each: Python-compatible JSON, Unicode general categories and NFC. Currently used by `qwen35-forward/`. |
 | [`rwkv7-engine/`](rwkv7-engine/) | Python + CUDA | A hand-written RWKV7 (G1j-2.9B) inference engine that loads through Siphon: a dependency-free forward pass, a custom Wkv kernel with fp16 I/O and fp32 state, and an acceptance harness that compares greedy tokens against llama.cpp. |
 
-**The companion trees share no code with each other**, and none of them affects
-the extension's build, its dependencies, or its runtime. `rust-qwen-engine/` and
-`qwen35-forward/` build with `cargo` and need no CUDA; `rwkv7-engine/` needs
-CUDA and a GPU, and is the only one that imports the loader. Install and build
-instructions below apply to the Python/C++ loader unless stated otherwise.
+**The trees share no oracle.** Model-specific code stays in the tree that owns
+it; only helpers that no model can change live in [`shell/`](shell/). Sharing
+them is safe because the corpora that verify each tree come from the independent
+Python reference, never from the shared code.
+
+None of them affects the extension's build, its dependencies, or its runtime.
+`rust-qwen-engine/` and `qwen35-forward/` build with `cargo` and need no CUDA;
+`rwkv7-engine/` needs CUDA and a GPU, and is the only one that imports the
+loader. Install and build instructions below apply to the Python/C++ loader
+unless stated otherwise.
 
 ## The loader
 
@@ -340,6 +346,7 @@ tests/                     Loader tests and the benchmark harness
 rust-qwen-engine/          Rust safetensors reader (independent cargo workspace)
 qwen35-forward/            Forward golden harness (Python + independent cargo workspace)
 rwkv7-engine/              RWKV7 inference engine (Python + CUDA kernel)
+shell/                     Shared model-agnostic crates (independent cargo workspace)
 ```
 
 ## Acknowledgments

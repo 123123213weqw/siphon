@@ -837,7 +837,7 @@ the same single token as `"é"`, and the corpus records 22 such round-trip diffe
 That is the reference's behaviour, not an artefact.
 
 NFC needs decomposition, canonical ordering and composition, none of which `core`
-provides, so `tools/gen_unicode_tables.py` generates `gdn/src/unicode_tables.rs` from
+provides, so `tools/gen_unicode_tables.py` generates `shell/crates/shell-text/src/unicode_tables.rs` from
 Python's `unicodedata` (Unicode 13.0.0, recorded in the file). Generated rather than
 pulled from a crate so the build stays offline, and inspectable:
 

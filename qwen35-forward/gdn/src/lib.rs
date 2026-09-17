@@ -44,13 +44,15 @@ pub mod chatparse;
 pub mod layer;
 pub mod loader;
 pub mod model;
-pub mod pyjson;
 pub mod real;
 pub mod safetensors;
 pub mod sample;
 pub mod tokenizer;
-pub mod unicode_gc;
-pub mod unicode_tables;
+
+// Model-agnostic text utilities live in the shared `shell-text` crate, so a second
+// consumer does not have to carry a copy. Re-exported here to keep the paths this
+// crate and its binaries already use (`crate::pyjson`, `gdn::unicode_gc`) working.
+pub use shell_text::{pyjson, unicode_gc, unicode_tables};
 
 /// Default RMSNorm epsilon. The reference reads it from `config.rms_norm_eps`,
 /// which is `1e-6` for every qwen35 configuration checked; `GdnConfig::eps`

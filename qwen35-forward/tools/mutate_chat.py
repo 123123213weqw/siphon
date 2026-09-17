@@ -34,7 +34,9 @@ from pathlib import Path
 
 CHAT = "gdn/src/chat.rs"
 CHATPARSE = "gdn/src/chatparse.rs"
-JSON = "gdn/src/pyjson.rs"
+# `pyjson` moved to the shared `shell-text` crate; the mutation still has to find
+# the real source, so this path reaches out of the tree on purpose.
+JSON = "../shell/crates/shell-text/src/pyjson.rs"
 
 BS = chr(0x5C)  # a backslash, for building replacements that need a literal one
 Q = chr(0x22)  # a double quote

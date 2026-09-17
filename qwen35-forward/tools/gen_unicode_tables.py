@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate `gdn/src/unicode_tables.rs` from Python's `unicodedata`.
+"""Generate `shell/crates/shell-text/src/unicode_tables.rs` from Python's `unicodedata`.
 
-    gen_unicode_tables.py > gdn/src/unicode_tables.rs
+    gen_unicode_tables.py > ../shell/crates/shell-text/src/unicode_tables.rs
 
 The tokenizer needs four things that Rust's standard library does not expose:
 
