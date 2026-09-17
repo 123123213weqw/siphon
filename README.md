@@ -347,13 +347,7 @@ qwen35-forward/            Forward golden harness (Python + independent cargo wo
 rwkv7-engine/              RWKV7 inference engine (Python + CUDA kernel)
 ```
 
-## Origin, attribution and license
+## Acknowledgments
 
-This project began as a fork of
-**[InstantTensor](https://github.com/scitix/InstantTensor)** by ScitiX AI, and
-is developed here as its own line of work. The original code is Apache-2.0
-licensed; that license and the attribution above are retained as required.
-
-Subsequent changes in this repository — including the page-cache probe in
-automatic backend selection, and the companion trees — are likewise
-Apache-2.0. See [`LICENSE`](LICENSE).
+Based on [InstantTensor](https://github.com/scitix/InstantTensor) by ScitiX AI.
+Apache-2.0; see [`LICENSE`](LICENSE).
