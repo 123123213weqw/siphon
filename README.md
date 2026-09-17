@@ -62,11 +62,6 @@ Any of the following:
 
 ### Install
 
-> **The package is not on PyPI under this name.** PyPI's `siphon` is an
-> unrelated project ([Unidata/siphon](https://github.com/Unidata/siphon)). The
-> name is taken, so `pip install siphon` installs that project, not this one.
-> Install from source.
-
 ```bash
 git clone https://github.com/123123213weqw/siphon.git
 cd siphon
