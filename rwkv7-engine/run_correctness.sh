@@ -36,7 +36,8 @@ PYEOF
 
 echo ""
 echo "############ B. siphon vs HF/FLA (per-token logits) ############"
-CUDA_VISIBLE_DEVICES=$GPU $PY -m rwkv7_engine.compare --model-dir "$HF_DIR" --device cuda:0 \
+rm -f /tmp/correctness_hf.json
+CUDA_VISIBLE_DEVICES=$GPU RWKV7_NATIVE_MODEL=1 $PY -m rwkv7_engine.compare --model-dir "$HF_DIR" --device cuda:0 \
   --ref hf --max-tokens 32 --out /tmp/correctness_hf.json 2>/tmp/hf_err.log
 echo "--- HF/FLA logit stats ---"
 $PY - <<'PYEOF'

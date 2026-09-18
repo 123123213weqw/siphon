@@ -60,8 +60,8 @@ def _load_hf_reference(model_dir: str, device: str):
 
 
 def _logit_stats(a: torch.Tensor, b: torch.Tensor) -> dict:
-    a = a.float().reshape(-1)
-    b = b.float().reshape(-1)
+    a = a.float()
+    b = b.float()
     diff = (a - b).abs()
     denom = b.abs().clamp_min(1.0)
     return {
@@ -106,21 +106,26 @@ def compare_llamacpp(model: RWKV7Model, model_dir: str, device: str,
     tok = RWKVTrieTokenizer(_vocab_path(model_dir))
 
     def server_completions(prompt_ids: list[int], n: int) -> list[int]:
+        # OpenAI-compatible endpoint: prompt accepts a list of token ids;
+        # logprobs=1 yields the generated token ids (greedy at temperature 0).
         body = json.dumps({
-            "tokens": prompt_ids,
-            "n_predict": n,
+            "prompt": prompt_ids,
+            "max_tokens": n,
             "temperature": 0.0,
-            "repeat_penalty": 1.0,
-            "min_keep": 100,
-            "stop": [],
+            "logprobs": 1,
             "stream": False,
         }).encode()
         req = urllib.request.Request(
-            server_url.rstrip("/") + "/completion", data=body,
+            server_url.rstrip("/") + "/v1/completions", data=body,
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=600) as resp:
             data = json.loads(resp.read())
-        return data["tokens"]
+        choice = data["choices"][0]
+        lp = choice.get("logprobs")
+        if lp is not None:
+            return [t["id"] for t in lp.get("content", [])]
+        # fallback: no logprobs -> return text for a text-level comparison
+        return choice.get("text", "")
 
     rows = []
     for prompt in prompts:

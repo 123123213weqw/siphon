@@ -77,17 +77,35 @@ def _bench_prefill(model: RWKV7Model, ids: list[int], device: str,
 
 def _bench_decode(model: RWKV7Model, ids: list[int], device: str,
                   n_tokens: int, warmup: int) -> dict:
+    """Time token-by-token generation only (prompt processing excluded,
+    matching llama-bench tg)."""
     x = torch.tensor([ids], dtype=torch.int64, device=device)
     for _ in range(warmup):
         model.greedy_generate(x, min(8, n_tokens))
-        torch.cuda.synchronize(device)
+    torch.cuda.synchronize(device)
+    # Prompt processing and the graph-state handover are NOT part of the
+    # measurement: llama-bench's tg number is pure token generation.
+    logits, state = model.forward(x, model.init_state())
+    last = logits[0, -1].argmax().item()
+    g, logit_buf, gstate, ids_buf = model._ensure_decode_graph()
+    for a, b in zip(state.wkv, gstate.wkv):
+        b.copy_(a)
+    for a, b in zip(state.attn_prev, gstate.attn_prev):
+        b.copy_(a)
+    for a, b in zip(state.ffn_prev, gstate.ffn_prev):
+        b.copy_(a)
+    ids_buf.fill_(last)
+    torch.cuda.synchronize(device)
     t0 = time.perf_counter()
-    out = model.greedy_generate(x, n_tokens)
+    for _ in range(n_tokens):
+        g.replay()
+        last = logit_buf[0, 0].argmax().item()
+        ids_buf.fill_(last)
     torch.cuda.synchronize(device)
     dt = time.perf_counter() - t0
-    n = len(out) - 1  # exclude the first token from the prefill
-    return {"tokens": n, "seconds": dt, "tok_per_s": n / dt if dt > 0 else 0.0,
-            "generated": out[:32]}
+    return {"tokens": n_tokens, "seconds": dt,
+            "tok_per_s": n_tokens / dt if dt > 0 else 0.0,
+            "generated_tail": [last]}
 
 
 def main() -> None:

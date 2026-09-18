@@ -23,7 +23,11 @@ vocab 65536), fp16 weights / fp32 Wkv state, on a V100 (sm_70).
    and greedy tokens against llama.cpp; `tests/test_wkv.py` checks the
    kernel against a pure-torch fp32 recurrence.
 4. **Bench** — `bench.py` measures cold load, prefill tok/s and decode
-   tok/s for a head-to-head against llama.cpp.
+   tok/s; `bench_compare.sh` runs the head-to-head against llama.cpp with the
+   page cache evicted before every round.  Results and the full breakdown:
+   [`docs/rwkv7-vs-llamacpp.md`](docs/rwkv7-vs-llamacpp.md) — cold load at
+   parity (13.10 s vs 13.14 s, both disk-bound), prefill **1.66×**, decode
+   **1.007×**.
 
 ## The Wkv recurrence (per sequence, per head)
 
@@ -50,6 +54,8 @@ rwkv7_engine/
   compare.py       correctness vs HF/FLA and llama.cpp (CLI)
 tests/
   test_wkv.py      kernel vs pure-torch reference
+docs/
+  rwkv7-vs-llamacpp.md   the head-to-head report (three metrics + correctness)
 setup_and_accept.sh  one-shot setup + acceptance on the V100
 run_correctness.sh   greedy tokens vs llama.cpp, then logits vs HF/FLA
 bench_compare.sh     cold load / prefill / decode, Siphon vs llama.cpp
