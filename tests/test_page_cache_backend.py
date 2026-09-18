@@ -184,3 +184,73 @@ def test_explicit_backend_skips_probe(monkeypatch):
     monkeypatch.setattr(_impl, "select_backend", fake_select)
     _impl.safe_open._determine_io_params(_FakeLoader(), _config([Backend.AIO]))
     assert calls["cands"] == [Backend.AIO]
+
+
+# --------------------------------------------------------------------------- rotational media
+def test_rotational_never_probes_off_linux(monkeypatch):
+    monkeypatch.setattr(_impl, "_ROTATIONAL_CACHE", {})
+    monkeypatch.setattr(_impl.sys, "platform", "darwin")
+    monkeypatch.setattr(_impl.os.path, "realpath", lambda p: pytest.fail("must not touch sysfs"))
+    assert _impl.storage_is_rotational("/etc/hostname") is False
+
+
+def test_rotational_unknown_path_is_false(monkeypatch):
+    monkeypatch.setattr(_impl, "_ROTATIONAL_CACHE", {})
+    monkeypatch.setattr(_impl.sys, "platform", "linux")
+    assert _impl.storage_is_rotational("/nonexistent/nope.safetensors") is False
+
+
+def test_rotational_walks_up_from_a_partition_node(monkeypatch, tmp_path):
+    """A partition node often has no `queue` directory; the walk must climb to the disk."""
+    monkeypatch.setattr(_impl, "_ROTATIONAL_CACHE", {})
+    monkeypatch.setattr(_impl.sys, "platform", "linux")
+    seen = []
+
+    def fake_realpath(path):
+        seen.append(path)
+        return "/sys/devices/x/block/sdb/sdb1"
+
+    def fake_exists(path):
+        return path.endswith("/sdb/queue/rotational")
+
+    class _Attr:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return "1\n"
+
+    def fake_open(path, *a, **k):
+        assert path.endswith("/sdb/queue/rotational"), path
+        return _Attr()
+
+    monkeypatch.setattr(_impl.os.path, "realpath", fake_realpath)
+    monkeypatch.setattr(_impl.os.path, "exists", fake_exists)
+    monkeypatch.setattr(_impl, "open", fake_open, raising=False)
+
+    target = tmp_path / "m.safetensors"
+    target.write_bytes(b"")
+    assert _impl.storage_is_rotational(str(target)) is True
+    assert seen and seen[0].startswith("/sys/dev/block/")
+
+
+def test_rotational_result_is_cached_per_device(monkeypatch, tmp_path):
+    monkeypatch.setattr(_impl, "_ROTATIONAL_CACHE", {})
+    monkeypatch.setattr(_impl.sys, "platform", "linux")
+    seen = []
+
+    def fake_realpath(path):
+        seen.append(path)
+        return "/sys/devices/x/block/nvme0n1"
+
+    monkeypatch.setattr(_impl.os.path, "realpath", fake_realpath)
+    monkeypatch.setattr(_impl.os.path, "exists", lambda p: False)   # no queue attr anywhere
+
+    target = str(tmp_path / "m.safetensors")
+    open(target, "wb").close()
+    assert _impl.storage_is_rotational(target) is False
+    assert _impl.storage_is_rotational(target) is False
+    assert len(seen) == 1, "the sysfs walk must be cached per device"

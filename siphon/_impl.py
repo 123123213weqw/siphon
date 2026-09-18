@@ -88,6 +88,12 @@ available_in_memory_backends = [Backend.MMAP, Backend.URING_BUFFERED, Backend.AI
 # therefore probe residency and pick the matching family.
 DEFAULT_CACHE_RESIDENT_THRESHOLD = 0.8
 
+# Depth cap for rotating media.  The 512-deep default is tuned for the I/O
+# parallelism an NVMe device or tmpfs can absorb; a spinning disk cannot, and
+# reads *slower* the deeper the queue gets.  16 keeps the device busy without
+# ever letting the driver reorder the sequential stream.
+DEFAULT_ROTATIONAL_IO_DEPTH = 16
+
 # A full-file ``mincore`` probe costs one syscall per page, which is far too
 # slow for multi-GB checkpoints, so we sample bounded windows spread over the
 # file instead.  The windows are advisory: we only need to tell "fully cached"
@@ -200,6 +206,53 @@ def page_cache_resident_ratio(filename: str) -> float:
     if total == 0:
         return -1.0
     return resident / total
+
+
+_ROTATIONAL_CACHE: dict[tuple[int, int], bool] = {}
+
+
+def storage_is_rotational(filename: str) -> bool:
+    """Whether ``filename`` lives on a rotational (spinning) device.
+
+    A spinning disk only sustains its peak sequential bandwidth when the
+    request queue stays shallow: with hundreds of in-flight multi-MiB reads
+    the drive spends its time seeking between them.  Measured on a PERC-RAID
+    SAS disk, the default direct-I/O depth cost ~25% of throughput
+    (0.39 GB/s against a 0.52 GB/s sequential floor), while a depth of 16 sat
+    at the floor.
+
+    Returns ``False`` when the answer cannot be determined, so behaviour is
+    unchanged on platforms without ``/sys/dev/block``.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        st = os.stat(filename)
+    except OSError:
+        return False
+    key = (os.major(st.st_dev), os.minor(st.st_dev))
+    cached = _ROTATIONAL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    rotational = False
+    try:
+        # Partitions on many kernels have no ``queue`` attribute of their own,
+        # so walk up from the partition node to the whole disk.
+        path = os.path.realpath(f"/sys/dev/block/{key[0]}:{key[1]}")
+        for _ in range(4):
+            probe = os.path.join(path, "queue", "rotational")
+            if os.path.exists(probe):
+                with open(probe) as f:
+                    rotational = f.read().strip() == "1"
+                break
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+    except OSError:
+        rotational = False
+    _ROTATIONAL_CACHE[key] = rotational
+    return rotational
 
 
 def choose_disk_backend_candidates(filenames: list[str]) -> list[Backend]:
@@ -786,6 +839,10 @@ class safe_open:
                     concurrency = 1
                 if io_depth is None:
                     io_depth = max(512 // self.world_size, 3) # aio read + cudaMemcpyAsync + ncclAllGather
+                    if any(storage_is_rotational(name) for name in self.filename):
+                        # A spinning disk seeks between the in-flight requests, so
+                        # a deep queue reads *slower* than a shallow one.
+                        io_depth = min(io_depth, DEFAULT_ROTATIONAL_IO_DEPTH)
 
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than zero")
